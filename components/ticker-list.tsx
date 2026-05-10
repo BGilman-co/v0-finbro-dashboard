@@ -4,12 +4,14 @@ import { ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer } from "recharts"
 import {
   type Holding,
+  formatCompactCurrency,
   formatCurrency,
+  formatPercent,
   getHoldingStats,
   getSeries,
 } from "@/lib/portfolio-data"
 
-export type SortKey = "company" | "qty" | "price" | "invested" | "current" | "returns"
+export type SortKey = "symbol" | "company" | "sector" | "marketCap" | "price" | "change" | "records"
 
 type TickerListProps = {
   holdings: Holding[]
@@ -32,12 +34,13 @@ export function TickerList({
     const firstStats = getHoldingStats(first)
     const secondStats = getHoldingStats(second)
     const values: Record<SortKey, [string | number, string | number]> = {
-      company: [first.id, second.id],
-      qty: [first.qty, second.qty],
+      symbol: [first.id, second.id],
+      company: [first.name, second.name],
+      sector: [first.sector, second.sector],
+      marketCap: [first.marketCap, second.marketCap],
       price: [firstStats.latest, secondStats.latest],
-      invested: [firstStats.invested, secondStats.invested],
-      current: [firstStats.current, secondStats.current],
-      returns: [firstStats.returns, secondStats.returns],
+      change: [firstStats.oneDayPercent, secondStats.oneDayPercent],
+      records: [firstStats.recordCount, secondStats.recordCount],
     }
     const [firstValue, secondValue] = values[sortKey]
     const result =
@@ -51,27 +54,28 @@ export function TickerList({
   const sortLabel = sortDirection === "asc" ? "ascending" : "descending"
 
   return (
-    <div className="bg-[#0D0D0D] rounded-2xl p-6">
+    <div className="overflow-x-auto rounded-2xl bg-[#0D0D0D] p-6">
       <table className="w-full">
         <thead>
           <tr className="text-[#919191] text-sm border-b border-transparent">
             <th className="pb-4 text-left font-medium pl-2">
               <button
                 className="flex items-center gap-1 cursor-pointer hover:text-white transition-colors"
-                onClick={() => onSort("company")}
-                aria-label={`Sort by company ${sortLabel}`}
+                onClick={() => onSort("symbol")}
+                aria-label={`Sort by symbol ${sortLabel}`}
               >
-                Company
+                Symbol
                 <ChevronsUpDown className="h-4 w-4" />
               </button>
             </th>
             <th className="pb-4 text-left font-medium w-[120px]"></th>
             {[
-              ["qty", "Qty."],
+              ["company", "Company"],
+              ["sector", "Sector"],
+              ["marketCap", "Market Cap"],
               ["price", "Mkt. Price"],
-              ["invested", "Invested"],
-              ["current", "Current"],
-              ["returns", "Returns"],
+              ["change", "1D Change"],
+              ["records", "Records"],
             ].map(([key, label]) => (
               <th key={key} className="pb-4 text-right font-medium">
                 <button className="inline-flex items-center justify-end gap-1 hover:text-white transition-colors" onClick={() => onSort(key as SortKey)}>
@@ -85,7 +89,7 @@ export function TickerList({
         <tbody>
           {sortedHoldings.map((item) => {
             const stats = getHoldingStats(item)
-            const trend = stats.returns >= 0 ? "up" : "down"
+            const trend = stats.oneDayChange >= 0 ? "up" : "down"
             const chartData = getSeries(item, "1M").map((point) => ({ value: point.price }))
 
             return (
@@ -98,8 +102,8 @@ export function TickerList({
             >
               <td className="py-4 pl-2 rounded-l-xl">
                 <div className="flex items-center gap-3">
-                  <span className="font-bold text-white">{item.name}</span>
-                  <span className="text-xs text-[#919191]">{item.id}</span>
+                  <span className="font-bold text-white">{item.id}</span>
+                  <span className="text-xs text-[#919191]">{item.exchange}</span>
                 </div>
               </td>
               <td className="py-4">
@@ -123,18 +127,17 @@ export function TickerList({
                   </ResponsiveContainer>
                 </div>
               </td>
-              <td className="py-4 text-right text-white font-medium">{item.qty}</td>
+              <td className="py-4 text-right text-white font-medium">{item.name}</td>
+              <td className="py-4 text-right text-white font-medium">{item.sector}</td>
+              <td className="py-4 text-right text-white font-medium">{formatCompactCurrency(item.marketCap)}</td>
               <td className="py-4 text-right text-white font-medium">{formatCurrency(stats.latest)}</td>
-              <td className="py-4 text-right text-white font-medium">{formatCurrency(stats.invested)}</td>
               <td className={`py-4 text-right font-medium ${trend === 'up' ? 'text-[#4ADE80]' : 'text-[#F87171]'}`}>
-                {formatCurrency(stats.current)}
-              </td>
-              <td className={`py-4 text-right font-medium pr-2 rounded-r-xl ${trend === 'up' ? 'text-[#4ADE80]' : 'text-[#F87171]'}`}>
                 <div className="flex items-center justify-end gap-1">
                   {trend === 'up' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                  {formatCurrency(Math.abs(stats.returns))}
+                  {formatPercent(stats.oneDayPercent)}
                 </div>
               </td>
+              <td className="py-4 text-right text-white font-medium pr-2 rounded-r-xl">{stats.recordCount.toLocaleString()}</td>
             </tr>
           )})}
         </tbody>

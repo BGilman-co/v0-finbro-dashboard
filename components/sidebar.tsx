@@ -12,11 +12,11 @@ type SidebarProps = {
 }
 
 const items: Array<{ id: NavItem; label: string; icon: ComponentType<{ className?: string }> }> = [
-  { id: "dashboard", label: "DASHBOARD", icon: Blocks },
+  { id: "dashboard", label: "DATABASE", icon: Blocks },
   { id: "analytics", label: "ANALYTICS", icon: BarChart3 },
-  { id: "arbitrader", label: "ARBITRADER", icon: Rabbit },
+  { id: "arbitrader", label: "SCREENER", icon: Rabbit },
   { id: "researcher", label: "RESEARCHER", icon: Container },
-  { id: "funds", label: "FUNDS", icon: Banknote },
+  { id: "funds", label: "DATASETS", icon: Banknote },
 ]
 
 export function Sidebar({ activeItem, onNavigate, onSupport }: SidebarProps) {
@@ -43,15 +43,15 @@ export function Sidebar({ activeItem, onNavigate, onSupport }: SidebarProps) {
       <div className="mt-auto pt-8 border-t border-[#1F1F1F] flex flex-col gap-8">
         <button onClick={onSupport} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <SquareArrowOutUpRight className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">B. GILMAN &amp; CO SUPPORT</span>
+          <span className="text-sm font-medium tracking-wide">DATA SOURCE REQUEST</span>
         </button>
-        <button onClick={() => window.alert("Settings needs a connected account first.")} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
+        <button onClick={() => window.alert("Source settings need a connected data provider first.")} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <Settings2 className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">SETTINGS</span>
+          <span className="text-sm font-medium tracking-wide">SOURCES</span>
         </button>
-        <button onClick={() => window.alert("Logout needs authentication first.")} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
+        <button onClick={() => window.alert("Export tools need a connected data provider first.")} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <LogOut className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">LOGOUT</span>
+          <span className="text-sm font-medium tracking-wide">EXPORTS</span>
         </button>
       </div>
     </aside>

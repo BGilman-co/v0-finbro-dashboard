@@ -41,7 +41,7 @@ export function PerformanceChart({ holding, period, onPeriodChange }: Performanc
     <div className="flex flex-col gap-6 p-6 bg-[#0D0D0D] rounded-2xl">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 md:gap-2 lg:gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <h2 className="text-xl font-medium text-white">Performance</h2>
+          <h2 className="text-xl font-medium text-white">Price History</h2>
           <div className="flex items-center gap-2 px-3 py-1 bg-[#1A1A1A] rounded-full border border-[#333]">
             <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ backgroundColor: holding.color }}>
               <span className="text-[10px] font-bold text-white">{holding.id.charAt(0)}</span>
@@ -71,14 +71,14 @@ export function PerformanceChart({ holding, period, onPeriodChange }: Performanc
           <div className="flex items-center gap-2">
             <button
               className="p-2 text-gray-400 hover:text-white bg-[#1A1A1A] rounded-lg transition-colors"
-              title="Show latest available date"
-              onClick={() => window.alert(`Latest sample date: ${data.at(-1)?.label ?? "Unavailable"}`)}
+              title="Show latest record date"
+              onClick={() => window.alert(`Latest data record: ${data.at(-1)?.label ?? "Unavailable"}`)}
             >
               <Calendar className="h-5 w-5" />
             </button>
             <button
               className="p-2 text-gray-400 hover:text-white bg-[#1A1A1A] rounded-lg transition-colors"
-              title="Download chart data"
+              title="Download price history"
               onClick={downloadCsv}
             >
               <Download className="h-5 w-5" />

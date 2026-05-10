@@ -1,52 +1,43 @@
 "use client"
 
-import { Wallet } from 'lucide-react'
-import { formatCurrency, formatPercent } from "@/lib/portfolio-data"
+import { Database } from 'lucide-react'
 
 type DashboardMetricsProps = {
   stats: {
-    current: number
-    invested: number
-    returns: number
-    oneDayReturns: number
+    symbols: number
+    records: number
+    sectors: number
+    datasets: number
   }
 }
 
 export function DashboardMetrics({ stats }: DashboardMetricsProps) {
-  const netReturn = stats.invested === 0 ? 0 : (stats.returns / stats.invested) * 100
-  const returnColor = stats.returns >= 0 ? "text-[#86efac]" : "text-[#F87171]"
-  const oneDayColor = stats.oneDayReturns >= 0 ? "text-[#86efac]" : "text-[#F87171]"
-
   return (
     <div className="flex flex-col xl:flex-row gap-8 xl:items-center justify-between p-6 bg-[#0D0D0D] rounded-2xl">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-gray-400">
-          <Wallet className="h-5 w-5" />
-          <span className="text-lg">Current</span>
+          <Database className="h-5 w-5" />
+          <span className="text-lg">Financial Data Library</span>
         </div>
-        <div className="text-5xl md:text-4xl lg:text-5xl font-bold text-white">{formatCurrency(stats.current)}</div>
+        <div className="text-5xl md:text-4xl lg:text-5xl font-bold text-white">{stats.symbols}</div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-8 xl:gap-16">
         <div className="flex flex-col gap-1">
-          <span className="text-gray-400 text-sm">Invested</span>
-          <span className="text-2xl md:text-xl lg:text-2xl font-semibold text-white">{formatCurrency(stats.invested)}</span>
+          <span className="text-gray-400 text-sm">Tracked Symbols</span>
+          <span className="text-2xl md:text-xl lg:text-2xl font-semibold text-white">{stats.symbols}</span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-gray-400 text-sm">Total Returns</span>
-          <span className={`text-2xl md:text-xl lg:text-2xl font-semibold ${returnColor}`}>
-            {stats.returns >= 0 ? "+" : ""}{formatCurrency(stats.returns)}
-          </span>
+          <span className="text-gray-400 text-sm">Price Records</span>
+          <span className="text-2xl md:text-xl lg:text-2xl font-semibold text-[#86efac]">{stats.records.toLocaleString()}</span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-gray-400 text-sm">Net Returns</span>
-          <span className={`text-2xl md:text-xl lg:text-2xl font-semibold ${returnColor}`}>{formatPercent(netReturn)}</span>
+          <span className="text-gray-400 text-sm">Sectors</span>
+          <span className="text-2xl md:text-xl lg:text-2xl font-semibold text-white">{stats.sectors}</span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-gray-400 text-sm">1 Day Returns</span>
-          <span className={`text-2xl md:text-xl lg:text-2xl font-semibold ${oneDayColor}`}>
-            {stats.oneDayReturns >= 0 ? "+" : ""}{formatCurrency(stats.oneDayReturns)}
-          </span>
+          <span className="text-gray-400 text-sm">Datasets</span>
+          <span className="text-2xl md:text-xl lg:text-2xl font-semibold text-white">{stats.datasets}</span>
         </div>
       </div>
     </div>

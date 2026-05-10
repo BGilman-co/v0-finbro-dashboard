@@ -9,8 +9,11 @@ export type PricePoint = {
 export type Holding = {
   id: string
   name: string
-  qty: number
-  averageCost: number
+  sector: string
+  exchange: string
+  marketCap: number
+  peRatio: number
+  dividendYield: number
   color: string
   history: PricePoint[]
 }
@@ -65,32 +68,44 @@ export const holdings: Holding[] = [
   {
     id: "TSLA",
     name: "Tesla",
-    qty: 29,
-    averageCost: 318.4,
+    sector: "Consumer Discretionary",
+    exchange: "NASDAQ",
+    marketCap: 1270000000000,
+    peRatio: 74.2,
+    dividendYield: 0,
     color: "#ef4444",
     history: buildHistory(235, 0.42, 21, 0.4),
   },
   {
     id: "AMD",
     name: "Advanced Micro Devices",
-    qty: 14,
-    averageCost: 154.25,
+    sector: "Semiconductors",
+    exchange: "NASDAQ",
+    marketCap: 264000000000,
+    peRatio: 38.8,
+    dividendYield: 0,
     color: "#f97316",
     history: buildHistory(184, -0.09, 13, 1.8),
   },
   {
     id: "NVDA",
     name: "Nvidia",
-    qty: 18,
-    averageCost: 92.6,
+    sector: "Semiconductors",
+    exchange: "NASDAQ",
+    marketCap: 2760000000000,
+    peRatio: 51.6,
+    dividendYield: 0.03,
     color: "#22c55e",
     history: buildHistory(96, 0.18, 8, 3.2),
   },
   {
     id: "AAPL",
     name: "Apple",
-    qty: 11,
-    averageCost: 189.1,
+    sector: "Technology Hardware",
+    exchange: "NASDAQ",
+    marketCap: 2890000000000,
+    peRatio: 29.4,
+    dividendYield: 0.52,
     color: "#60a5fa",
     history: buildHistory(171, 0.08, 6, 2.5),
   },
@@ -122,19 +137,13 @@ export function getPreviousClose(holding: Holding) {
 export function getHoldingStats(holding: Holding) {
   const latest = getLatestPrice(holding)
   const previousClose = getPreviousClose(holding)
-  const invested = holding.qty * holding.averageCost
-  const current = holding.qty * latest
-  const returns = current - invested
-  const oneDayReturns = holding.qty * (latest - previousClose)
+  const oneDayChange = latest - previousClose
 
   return {
     latest,
-    invested,
-    current,
-    returns,
-    returnsPercent: invested === 0 ? 0 : (returns / invested) * 100,
-    oneDayReturns,
+    oneDayChange,
     oneDayPercent: previousClose === 0 ? 0 : ((latest - previousClose) / previousClose) * 100,
+    recordCount: holding.history.length,
   }
 }
 
@@ -143,6 +152,15 @@ export function formatCurrency(value: number) {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: value >= 1000 ? 0 : 2,
+  }).format(value)
+}
+
+export function formatCompactCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 2,
   }).format(value)
 }
 
