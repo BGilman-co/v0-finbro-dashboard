@@ -1,46 +1,58 @@
 "use client"
 
+import type { ComponentType } from "react"
 import { Blocks, BarChart3, Rabbit, Container, Banknote, SquareArrowOutUpRight, Settings2, LogOut } from 'lucide-react'
 
-export function Sidebar() {
+export type NavItem = "dashboard" | "analytics" | "arbitrader" | "researcher" | "funds"
+
+type SidebarProps = {
+  activeItem: NavItem
+  onNavigate: (item: NavItem) => void
+  onSupport: () => void
+}
+
+const items: Array<{ id: NavItem; label: string; icon: ComponentType<{ className?: string }> }> = [
+  { id: "dashboard", label: "DASHBOARD", icon: Blocks },
+  { id: "analytics", label: "ANALYTICS", icon: BarChart3 },
+  { id: "arbitrader", label: "ARBITRADER", icon: Rabbit },
+  { id: "researcher", label: "RESEARCHER", icon: Container },
+  { id: "funds", label: "FUNDS", icon: Banknote },
+]
+
+export function Sidebar({ activeItem, onNavigate, onSupport }: SidebarProps) {
   return (
     <aside className="sticky top-24 h-[calc(100vh-8rem)] md:w-48 lg:w-64 bg-[#0D0D0D] rounded-2xl hidden md:flex flex-col p-8 overflow-y-auto">
       <nav className="flex flex-col gap-8">
-        <div className="flex items-center gap-4 text-[#E7E7E7] cursor-pointer">
-          <Blocks className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">DASHBOARD</span>
-        </div>
-        <div className="flex items-center gap-4 text-[#919191] hover:text-[#E7E7E7] transition-colors cursor-pointer">
-          <BarChart3 className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">ANALYTICS</span>
-        </div>
-        <div className="flex items-center gap-4 text-[#919191] hover:text-[#E7E7E7] transition-colors cursor-pointer">
-          <Rabbit className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">ARBITRADER</span>
-        </div>
-        <div className="flex items-center gap-4 text-[#919191] hover:text-[#E7E7E7] transition-colors cursor-pointer">
-          <Container className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">RESEARCHER</span>
-        </div>
-        <div className="flex items-center gap-4 text-[#919191] hover:text-[#E7E7E7] transition-colors cursor-pointer">
-          <Banknote className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">FUNDS</span>
-        </div>
+        {items.map((item) => {
+          const Icon = item.icon
+          const active = activeItem === item.id
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className={`flex items-center gap-4 text-left transition-colors ${active ? "text-[#E7E7E7]" : "text-[#919191] hover:text-[#E7E7E7]"}`}
+            >
+              <Icon className="h-6 w-6" />
+              <span className="text-sm font-medium tracking-wide">{item.label}</span>
+            </button>
+          )
+        })}
       </nav>
 
       <div className="mt-auto pt-8 border-t border-[#1F1F1F] flex flex-col gap-8">
-        <div className="flex items-center gap-4 text-[#919191] hover:text-[#E7E7E7] transition-colors cursor-pointer">
+        <button onClick={onSupport} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <SquareArrowOutUpRight className="h-6 w-6" />
           <span className="text-sm font-medium tracking-wide">FINBRO SUPPORT</span>
-        </div>
-        <div className="flex items-center gap-4 text-[#919191] hover:text-[#E7E7E7] transition-colors cursor-pointer">
+        </button>
+        <button onClick={() => window.alert("Settings needs a connected account first.")} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <Settings2 className="h-6 w-6" />
           <span className="text-sm font-medium tracking-wide">SETTINGS</span>
-        </div>
-        <div className="flex items-center gap-4 text-[#919191] hover:text-[#E7E7E7] transition-colors cursor-pointer">
+        </button>
+        <button onClick={() => window.alert("Logout needs authentication first.")} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <LogOut className="h-6 w-6" />
           <span className="text-sm font-medium tracking-wide">LOGOUT</span>
-        </div>
+        </button>
       </div>
     </aside>
   )
