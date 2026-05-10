@@ -1,34 +1,42 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { DashboardMetrics } from "@/components/dashboard-metrics"
-import { PerformanceChart } from "@/components/performance-chart"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { TickerList, type SortKey } from "@/components/ticker-list"
 import { Sidebar, type NavItem } from "@/components/sidebar"
 import { Header } from "@/components/header"
-import { holdings, type Period } from "@/lib/portfolio-data"
+import { MarketIntelligence } from "@/components/market-intelligence"
+import { PerformanceChart } from "@/components/performance-chart"
+import { holdings } from "@/lib/portfolio-data"
+import type { FilingsPayload, MarketPayload, Security } from "@/lib/market-types"
+
+type UniversePayload = {
+  securities: Security[]
+  count: number
+  provider: string
+  updatedAt: string
+}
 
 function ViewPanel({ activeView }: { activeView: NavItem }) {
   const panels: Record<NavItem, { title: string; detail: string }> = {
     dashboard: {
       title: "Market Database",
-      detail: "Searchable equities, price history, fundamentals, filings, and source coverage.",
+      detail: "S&P 500 universe, Alpha Vantage quotes, SEC EDGAR filings, and XBRL statement tables.",
     },
     analytics: {
       title: "Analytics",
-      detail: "Compare securities by movement, market cap, valuation, sector, and source coverage.",
+      detail: "Compare securities by movement, sector, filing coverage, and statement data.",
     },
     arbitrader: {
       title: "Screener",
-      detail: "Filter market records by sector, exchange, valuation, volume, and price action.",
+      detail: "Filter the S&P 500 universe by symbol, company, sector, quote status, and filings.",
     },
     researcher: {
       title: "Researcher",
-      detail: "Research mode can pull news, filings, and analyst data once a data source is connected.",
+      detail: "Select any company to pull recent 10-K/10-Q filings and structured SEC financial facts.",
     },
     funds: {
       title: "Datasets",
-      detail: "Manage quote, fundamentals, filings, macro, and alternative-data source tables.",
+      detail: "Live sources include Alpha Vantage market data and official SEC EDGAR APIs.",
     },
   }
 
@@ -46,65 +54,97 @@ function ViewPanel({ activeView }: { activeView: NavItem }) {
   )
 }
 
-function DataSourcePanel({ symbol }: { symbol: string }) {
-  return (
-    <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
-      <div className="rounded-2xl bg-[#0D0D0D] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm text-[#919191]">Reference Dataset</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">{symbol} market record</h2>
-          </div>
-          <span className="rounded-lg bg-[#1A1A1A] px-3 py-2 text-sm text-[#86efac]">Static sample</span>
-        </div>
-
-        <div className="mt-5 grid gap-3 border-t border-[#1F1F1F] pt-4 sm:grid-cols-3">
-          <div>
-            <span className="text-xs text-[#919191]">Coverage</span>
-            <p className="mt-1 text-sm text-white">Daily prices, 1D view, fundamentals</p>
-          </div>
-          <div>
-            <span className="text-xs text-[#919191]">Source Type</span>
-            <p className="mt-1 text-sm text-white">Local reference table</p>
-          </div>
-          <div>
-            <span className="text-xs text-[#919191]">Next Step</span>
-            <p className="mt-1 text-sm text-white">Connect a market-data provider</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-2xl bg-[#0D0D0D] p-6">
-        <p className="text-sm text-[#919191]">Database Modules</p>
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-          {["Prices", "Fundamentals", "Filings", "Options"].map((module) => (
-            <div key={module} className="rounded-lg border border-[#1F1F1F] px-3 py-3 text-white">
-              {module}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
 export function DashboardShell() {
   const [activeView, setActiveView] = useState<NavItem>("dashboard")
-  const [selectedSymbol, setSelectedSymbol] = useState("TSLA")
-  const [period, setPeriod] = useState<Period>("6M")
-  const [sortKey, setSortKey] = useState<SortKey>("marketCap")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+  const [selectedSymbol, setSelectedSymbol] = useState("AAPL")
+  const [search, setSearch] = useState("")
+  const [sortKey, setSortKey] = useState<SortKey>("symbol")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
+  const [universe, setUniverse] = useState<UniversePayload | null>(null)
+  const [marketData, setMarketData] = useState<MarketPayload | null>(null)
+  const [filingsData, setFilingsData] = useState<FilingsPayload | null>(null)
+  const [isMarketLoading, setIsMarketLoading] = useState(true)
 
-  const selectedHolding = holdings.find((holding) => holding.id === selectedSymbol) ?? holdings[0]
+  const securities = universe?.securities.length
+    ? universe.securities
+    : holdings.map((holding) => ({
+        symbol: holding.id,
+        name: holding.name,
+        sector: holding.sector,
+        exchange: holding.exchange,
+      }))
+  const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol) ?? securities[0]
+  const quoteSymbols = useMemo(() => {
+    return securities.map((security) => security.symbol)
+  }, [securities])
 
-  const databaseStats = useMemo(() => {
-    return {
-      symbols: holdings.length,
-      records: holdings.reduce((total, holding) => total + holding.history.length, 0),
-      sectors: new Set(holdings.map((holding) => holding.sector)).size,
-      datasets: 4,
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadUniverse() {
+      const response = await fetch("/api/universe", { cache: "no-store" })
+
+      if (response.ok && isMounted) {
+        const payload = (await response.json()) as UniversePayload
+        setUniverse(payload)
+
+        if (!payload.securities.some((security) => security.symbol === selectedSymbol)) {
+          setSelectedSymbol(payload.securities[0]?.symbol ?? "AAPL")
+        }
+      }
+    }
+
+    loadUniverse()
+
+    return () => {
+      isMounted = false
     }
   }, [])
+
+  const refreshMarketData = useCallback(async () => {
+    setIsMarketLoading(true)
+
+    try {
+      const symbols = quoteSymbols.join(",")
+      const response = await fetch(`/api/market?symbols=${encodeURIComponent(symbols)}&optionSymbol=${selectedSymbol}`, {
+        cache: "no-store",
+      })
+
+      if (response.ok) {
+        setMarketData((await response.json()) as MarketPayload)
+      }
+    } finally {
+      setIsMarketLoading(false)
+    }
+  }, [quoteSymbols, selectedSymbol])
+
+  useEffect(() => {
+    refreshMarketData()
+    const interval = window.setInterval(refreshMarketData, 60_000)
+
+    return () => window.clearInterval(interval)
+  }, [refreshMarketData])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadFilings() {
+      const response = await fetch(`/api/filings?symbol=${selectedSymbol}`, {
+        cache: "no-store",
+      })
+
+      if (response.ok && isMounted) {
+        setFilingsData((await response.json()) as FilingsPayload)
+      }
+    }
+
+    setFilingsData(null)
+    loadFilings()
+
+    return () => {
+      isMounted = false
+    }
+  }, [selectedSymbol])
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -117,14 +157,14 @@ export function DashboardShell() {
   }
 
   const notifyUnavailable = (feature: string) => {
-    window.alert(`${feature} needs a connected data source first.`)
+    window.alert(`${feature} is connected to the market data and SEC source workflow.`)
   }
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black text-white">
       <Header
         onSettings={() => notifyUnavailable("Settings")}
-        onLogout={() => notifyUnavailable("Data sources")}
+        onLogout={() => notifyUnavailable("Sources")}
       />
 
       <div className="h-full overflow-y-auto no-scrollbar">
@@ -133,28 +173,41 @@ export function DashboardShell() {
 
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <ViewPanel activeView={activeView} />
-            <DashboardMetrics stats={databaseStats} />
             <PerformanceChart
-              holding={selectedHolding}
-              period={period}
-              onPeriodChange={setPeriod}
+              securities={securities}
+              symbol={selectedSecurity?.symbol ?? selectedSymbol}
+              onSymbolChange={(symbol) => {
+                setSelectedSymbol(symbol)
+                setActiveView("dashboard")
+              }}
             />
             <TickerList
-              holdings={holdings}
-              selectedSymbol={selectedSymbol}
+              securities={securities}
+              quotes={marketData?.quotes ?? []}
+              selectedSymbol={selectedSecurity?.symbol ?? selectedSymbol}
+              search={search}
               sortKey={sortKey}
               sortDirection={sortDirection}
+              onSearchChange={setSearch}
               onSelect={(symbol) => {
                 setSelectedSymbol(symbol)
                 setActiveView("dashboard")
               }}
               onSort={handleSort}
             />
-            <DataSourcePanel symbol={selectedSymbol} />
+            <MarketIntelligence
+              symbol={selectedSecurity?.symbol ?? selectedSymbol}
+              market={marketData}
+              filings={filingsData}
+              isLoading={isMarketLoading}
+              onRefresh={refreshMarketData}
+            />
 
             <div className="mt-4 flex items-center justify-end gap-2">
-              <div className="h-[13px] w-[13px] rounded-full bg-[#f59e0b]" />
-              <span className="text-sm text-[#919191]">Reference database mode</span>
+              <div className={`h-[13px] w-[13px] rounded-full ${marketData?.isLive ? "bg-[#86efac]" : "bg-[#f59e0b]"}`} />
+              <span className="text-sm text-[#919191]">
+                {marketData?.provider ?? "Connecting"} · {universe?.provider ?? "Loading S&P 500 universe"}
+              </span>
             </div>
           </div>
         </main>
