@@ -14,7 +14,7 @@ function ViewPanel({ activeView }: { activeView: NavItem }) {
   const panels: Record<NavItem, { title: string; detail: string }> = {
     dashboard: {
       title: "Market Database",
-      detail: "S&P 500 universe, Alpha Vantage quotes, SEC EDGAR filings, and XBRL statement tables.",
+      detail: "S&P 500 universe, yfinance market snapshots, SEC EDGAR filings, and XBRL statement tables.",
     },
     analytics: {
       title: "Analytics",
@@ -30,7 +30,7 @@ function ViewPanel({ activeView }: { activeView: NavItem }) {
     },
     funds: {
       title: "Datasets",
-      detail: "Live sources include Alpha Vantage market data and official SEC EDGAR APIs.",
+      detail: "Market data is generated from yfinance/Yahoo Finance snapshots and official SEC EDGAR APIs.",
     },
   }
 

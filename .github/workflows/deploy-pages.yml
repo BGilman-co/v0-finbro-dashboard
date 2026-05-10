@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "*/30 13-21 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -31,6 +33,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
@@ -39,10 +46,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install yfinance
+        run: python -m pip install --upgrade yfinance
+
+      - name: Generate Yahoo market snapshot
+        run: python scripts/fetch_yfinance_data.py
+
       - name: Build static site
         env:
           GITHUB_PAGES: true
-          NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY: ${{ secrets.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY || secrets.ALPHA_VANTAGE_API_KEY }}
         run: pnpm build
 
       - name: Disable Jekyll

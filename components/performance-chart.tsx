@@ -95,7 +95,7 @@ export function PerformanceChart({ securities, symbol, onSymbolChange }: Perform
       </div>
 
       <div className="mt-4 flex flex-wrap gap-3 text-sm text-[#919191]">
-        <span>{history?.provider ?? "Alpha Vantage"}</span>
+        <span>{history?.provider ?? "yfinance / Yahoo Finance"}</span>
         <span>{isLoading ? "Loading..." : sourceText}</span>
       </div>
 

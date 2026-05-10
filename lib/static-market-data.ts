@@ -10,16 +10,12 @@ import type {
   MarketQuote,
   OptionContract,
   PriceHistoryPayload,
-  PriceHistoryPoint,
   Security,
 } from "@/lib/market-types"
 
-const alphaKey = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY
 const sp500CsvUrl = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
-}
+const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
+const yfinanceSnapshotUrl = `${appBasePath}/data/yfinance-snapshot.json`
 
 function parseCsvLine(line: string) {
   const cells: string[] = []
@@ -67,8 +63,46 @@ export type UniversePayload = {
   updatedAt: string
 }
 
+type YfinanceSnapshot = {
+  provider: string
+  updatedAt: string
+  universe: Security[]
+  quotes: MarketQuote[]
+  histories: Record<string, PriceHistoryPayload["points"]>
+  options?: Record<string, OptionContract[]>
+  message: string
+}
+
+let snapshotPromise: Promise<YfinanceSnapshot | null> | null = null
+
+async function loadYfinanceSnapshot() {
+  if (!snapshotPromise) {
+    snapshotPromise = fetch(yfinanceSnapshotUrl, { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`)
+        }
+
+        return response.json() as Promise<YfinanceSnapshot>
+      })
+      .catch(() => null)
+  }
+
+  return snapshotPromise
+}
+
 export async function loadSp500Universe(): Promise<UniversePayload> {
   const updatedAt = new Date().toISOString()
+  const snapshot = await loadYfinanceSnapshot()
+
+  if (snapshot?.universe?.length) {
+    return {
+      securities: snapshot.universe,
+      count: snapshot.universe.length,
+      provider: snapshot.provider,
+      updatedAt: snapshot.updatedAt,
+    }
+  }
 
   try {
     const response = await fetch(sp500CsvUrl, { cache: "no-store" })
@@ -130,320 +164,50 @@ export async function loadSp500Universe(): Promise<UniversePayload> {
   }
 }
 
-type AlphaBulkQuote = {
-  symbol?: string
-  price?: string
-  previous_close?: string
-  change?: string
-  change_percent?: string
-  volume?: string
-  timestamp?: string
-}
-
-type AlphaBulkQuoteResponse = {
-  data?: AlphaBulkQuote[]
-  Information?: string
-  Note?: string
-  "Error Message"?: string
-}
-
-type AlphaQuoteResponse = {
-  "Global Quote"?: {
-    "01. symbol"?: string
-    "05. price"?: string
-    "06. volume"?: string
-    "08. previous close"?: string
-    "09. change"?: string
-    "10. change percent"?: string
-  }
-  Information?: string
-  Note?: string
-  "Error Message"?: string
-}
-
-function providerMessage(data: AlphaBulkQuoteResponse | AlphaQuoteResponse) {
-  return sanitizeProviderMessage(data.Information ?? data.Note ?? data["Error Message"] ?? "")
-}
-
-function sanitizeProviderMessage(message: string) {
-  if (/rate limit|premium plans|25 requests per day|Thank you for using Alpha Vantage/i.test(message)) {
-    return "Alpha Vantage rate limit or plan access blocked the request."
-  }
-
-  return message
-}
-
-function normalizeAlphaBulkQuote(quote: AlphaBulkQuote): MarketQuote | null {
-  const symbol = quote.symbol ? normalizeSymbol(quote.symbol) : ""
-  const price = Number(quote.price)
-  const previousClose = Number(quote.previous_close)
-
-  if (!symbol || !Number.isFinite(price) || !Number.isFinite(previousClose)) {
-    return null
-  }
-
-  const change = Number(quote.change) || price - previousClose
-
-  return {
-    symbol,
-    price,
-    previousClose,
-    change,
-    changePercent: Number.parseFloat(quote.change_percent ?? "") || (previousClose === 0 ? 0 : (change / previousClose) * 100),
-    volume: Number(quote.volume) || undefined,
-    updatedAt: quote.timestamp ? new Date(quote.timestamp).toISOString() : new Date().toISOString(),
-  }
-}
-
-function normalizeAlphaQuote(symbol: string, data: AlphaQuoteResponse): MarketQuote | null {
-  const quote = data["Global Quote"]
-  const price = Number(quote?.["05. price"])
-  const previousClose = Number(quote?.["08. previous close"])
-
-  if (!Number.isFinite(price) || !Number.isFinite(previousClose)) {
-    return null
-  }
-
-  const change = Number(quote?.["09. change"]) || price - previousClose
-
-  return {
-    symbol: normalizeSymbol(quote?.["01. symbol"] ?? symbol),
-    price,
-    previousClose,
-    change,
-    changePercent: Number.parseFloat(quote?.["10. change percent"] ?? "") || (previousClose === 0 ? 0 : (change / previousClose) * 100),
-    volume: Number(quote?.["06. volume"]) || undefined,
-    updatedAt: new Date().toISOString(),
-  }
-}
-
-async function fetchAlphaJson<T>(params: Record<string, string>): Promise<T> {
-  if (!alphaKey) {
-    throw new Error("NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY is not configured.")
-  }
-
-  const searchParams = new URLSearchParams({ ...params, apikey: alphaKey })
-  const response = await fetch(`https://www.alphavantage.co/query?${searchParams.toString()}`, { cache: "no-store" })
-
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`)
-  }
-
-  return response.json() as Promise<T>
-}
-
-async function fetchAlphaBulkQuotes(symbols: string[]): Promise<MarketQuote[]> {
-  const quotes: MarketQuote[] = []
-  let message = ""
-  const chunks = Array.from({ length: Math.ceil(symbols.length / 100) }, (_, index) =>
-    symbols.slice(index * 100, index * 100 + 100),
-  )
-
-  for (const chunk of chunks) {
-    const data = await fetchAlphaJson<AlphaBulkQuoteResponse>({
-      function: "REALTIME_BULK_QUOTES",
-      symbol: chunk.join(","),
-    })
-    message = providerMessage(data) || message
-    quotes.push(...(data.data ?? []).map(normalizeAlphaBulkQuote).filter((quote): quote is MarketQuote => Boolean(quote)))
-  }
-
-  if (!quotes.length) {
-    throw new Error(message || "Alpha Vantage returned no usable bulk quotes.")
-  }
-
-  return quotes
-}
-
-async function fetchAlphaQuote(symbol: string): Promise<MarketQuote> {
-  const data = await fetchAlphaJson<AlphaQuoteResponse>({
-    function: "GLOBAL_QUOTE",
-    symbol,
-  })
-  const quote = normalizeAlphaQuote(symbol, data)
-
-  if (!quote) {
-    throw new Error(providerMessage(data) || `Alpha Vantage returned no usable quote for ${symbol}.`)
-  }
-
-  return quote
-}
-
-type AlphaOptionsResponse = {
-  data?: Array<{
-    contractID?: string
-    type?: string
-    strike?: string
-    expiration?: string
-    last?: string
-    bid?: string
-    ask?: string
-    volume?: string
-    open_interest?: string
-    implied_volatility?: string
-  }>
-}
-
-async function fetchAlphaOptions(symbol: string): Promise<OptionContract[]> {
-  const data = await fetchAlphaJson<AlphaOptionsResponse>({
-    function: "HISTORICAL_OPTIONS",
-    symbol,
-  })
-
-  return (data.data ?? [])
-    .map((option): OptionContract | null => {
-      const strike = Number(option.strike)
-      const type = option.type === "call" || option.type === "put" ? option.type : null
-
-      if (!option.contractID || !type || !Number.isFinite(strike)) {
-        return null
-      }
-
-      return {
-        contract: option.contractID,
-        type,
-        strike,
-        expiration: option.expiration,
-        lastPrice: Number(option.last) || undefined,
-        bid: Number(option.bid) || undefined,
-        ask: Number(option.ask) || undefined,
-        volume: Number(option.volume) || undefined,
-        openInterest: Number(option.open_interest) || undefined,
-        impliedVolatility: Number(option.implied_volatility) || undefined,
-      }
-    })
-    .filter((option): option is OptionContract => Boolean(option))
-    .sort((first, second) => (second.volume ?? 0) - (first.volume ?? 0))
-    .slice(0, 8)
-}
-
 export async function loadMarketData(symbols: string[], optionSymbol: string): Promise<MarketPayload> {
   const normalizedSymbols = symbols.map(normalizeSymbol).filter(Boolean)
   const selectedOptionSymbol = normalizeSymbol(optionSymbol || normalizedSymbols[0] || "AAPL")
   const updatedAt = new Date().toISOString()
+  const snapshot = await loadYfinanceSnapshot()
 
-  if (!alphaKey) {
+  if (!snapshot) {
     return {
       quotes: [],
       options: [],
-      provider: "Alpha Vantage",
+      provider: "yfinance / Yahoo Finance",
       isLive: false,
-      message: "GitHub Pages needs NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY to load browser-side live prices.",
+      message: "No yfinance snapshot was found. Run the yfinance data job to generate market prices.",
       updatedAt,
     }
   }
 
-  try {
-    const quotes = await fetchAlphaBulkQuotes(normalizedSymbols)
-    const options = await fetchAlphaOptions(selectedOptionSymbol).catch(() => [])
+  const requestedSymbols = new Set(normalizedSymbols)
+  const quotes = snapshot.quotes.filter((quote) => requestedSymbols.has(quote.symbol))
 
-    return {
-      quotes,
-      options,
-      provider: "Alpha Vantage",
-      isLive: true,
-      message: `${quotes.length} live/delayed quote records loaded from Alpha Vantage. Options appear when the key has options access.`,
-      updatedAt,
-    }
-  } catch (bulkError) {
-    const quote = await fetchAlphaQuote(selectedOptionSymbol).catch(() => null)
-    const quotes = quote ? [quote] : []
-    const options = await fetchAlphaOptions(selectedOptionSymbol).catch(() => [])
-    const message = bulkError instanceof Error ? bulkError.message : "Alpha Vantage bulk quotes were unavailable."
-
-    return {
-      quotes,
-      options,
-      provider: "Alpha Vantage",
-      isLive: quotes.length > 0,
-      message: quotes.length
-        ? `Selected ticker quote loaded. Full S&P 500 bulk access was unavailable: ${message}`
-        : `No quote data loaded. ${message}`,
-      updatedAt,
-    }
+  return {
+    quotes,
+    options: snapshot.options?.[selectedOptionSymbol] ?? [],
+    provider: snapshot.provider,
+    isLive: quotes.length > 0,
+    message: `${quotes.length} S&P 500 quote records loaded from the latest yfinance snapshot.`,
+    updatedAt: snapshot.updatedAt,
   }
-}
-
-type AlphaDailyResponse = {
-  "Time Series (Daily)"?: Record<
-    string,
-    {
-      "1. open"?: string
-      "2. high"?: string
-      "3. low"?: string
-      "4. close"?: string
-      "5. volume"?: string
-    }
-  >
-  Information?: string
-  Note?: string
-  "Error Message"?: string
 }
 
 export async function loadPriceHistory(symbol: string): Promise<PriceHistoryPayload> {
   const normalizedSymbol = normalizeSymbol(symbol)
   const updatedAt = new Date().toISOString()
+  const snapshot = await loadYfinanceSnapshot()
+  const points = snapshot?.histories?.[normalizedSymbol] ?? []
 
-  if (!alphaKey) {
-    return {
-      symbol: normalizedSymbol,
-      points: [],
-      provider: "Alpha Vantage",
-      message: "Add NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY to load the price movement graph on GitHub Pages.",
-      updatedAt,
-    }
-  }
-
-  try {
-    const data = await fetchAlphaJson<AlphaDailyResponse>({
-      function: "TIME_SERIES_DAILY",
-      symbol: normalizedSymbol,
-      outputsize: "compact",
-    })
-    const series = data["Time Series (Daily)"]
-
-    if (!series) {
-      throw new Error(providerMessage(data) || "Alpha Vantage returned no history.")
-    }
-
-    const points: PriceHistoryPoint[] = Object.entries(series)
-      .flatMap(([date, row]) => {
-        const close = Number(row["4. close"])
-
-        if (!Number.isFinite(close)) {
-          return []
-        }
-
-        return [{
-          date,
-          label: new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          }),
-          open: Number(row["1. open"]) || undefined,
-          high: Number(row["2. high"]) || undefined,
-          low: Number(row["3. low"]) || undefined,
-          close,
-          volume: Number(row["5. volume"]) || undefined,
-        }]
-      })
-      .sort((first, second) => first.date.localeCompare(second.date))
-
-    return {
-      symbol: normalizedSymbol,
-      points,
-      provider: "Alpha Vantage",
-      message: `${points.length} daily price records loaded.`,
-      updatedAt,
-    }
-  } catch (error) {
-    return {
-      symbol: normalizedSymbol,
-      points: [],
-      provider: "Alpha Vantage",
-      message: error instanceof Error ? error.message : "Historical price data is unavailable.",
-      updatedAt,
-    }
+  return {
+    symbol: normalizedSymbol,
+    points,
+    provider: snapshot?.provider ?? "yfinance / Yahoo Finance",
+    message: points.length
+      ? `${points.length} daily price records loaded from yfinance.`
+      : "No yfinance price history was found for this ticker.",
+    updatedAt: snapshot?.updatedAt ?? updatedAt,
   }
 }
 
