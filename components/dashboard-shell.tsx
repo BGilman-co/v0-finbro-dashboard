@@ -94,7 +94,7 @@ export function DashboardShell() {
 
       <div className="h-full overflow-y-auto no-scrollbar">
         <main className="flex min-h-full gap-6 p-6 pt-24">
-          <Sidebar activeItem={activeView} onNavigate={setActiveView} onSupport={() => window.location.href = "mailto:support@finbro.local"} />
+          <Sidebar activeItem={activeView} onNavigate={setActiveView} onSupport={() => window.location.href = "mailto:support@bgilman.co"} />
 
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <ViewPanel activeView={activeView} />

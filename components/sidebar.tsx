@@ -43,7 +43,7 @@ export function Sidebar({ activeItem, onNavigate, onSupport }: SidebarProps) {
       <div className="mt-auto pt-8 border-t border-[#1F1F1F] flex flex-col gap-8">
         <button onClick={onSupport} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <SquareArrowOutUpRight className="h-6 w-6" />
-          <span className="text-sm font-medium tracking-wide">FINBRO SUPPORT</span>
+          <span className="text-sm font-medium tracking-wide">B. GILMAN &amp; CO SUPPORT</span>
         </button>
         <button onClick={() => window.alert("Settings needs a connected account first.")} className="flex items-center gap-4 text-left text-[#919191] hover:text-[#E7E7E7] transition-colors">
           <Settings2 className="h-6 w-6" />

@@ -6,9 +6,9 @@ import './globals.css'
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: 'B. Gilman & Co',
+  description: 'B. Gilman & Co financial dashboard',
+  generator: 'B. Gilman & Co',
   icons: {
     icon: [
       {

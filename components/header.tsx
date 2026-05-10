@@ -1,6 +1,6 @@
 "use client"
 
-import { FinbroLogo } from "@/components/finbro-logo"
+import { BrandLogo } from "@/components/brand-logo"
 import { Settings2, LogOut } from 'lucide-react'
 import {
   DropdownMenu,
@@ -17,7 +17,7 @@ type HeaderProps = {
 export function Header({ onSettings, onLogout }: HeaderProps) {
   return (
     <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between p-6 bg-black/10 backdrop-blur-[120px]">
-      <FinbroLogo className="text-white h-8 w-auto" />
+      <BrandLogo className="text-white h-8 w-auto" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="h-10 w-10 rounded-full bg-gradient-to-br from-pink-500 to-orange-400 hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-white/20" />
