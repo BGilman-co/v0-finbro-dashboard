@@ -7,14 +7,8 @@ import { Header } from "@/components/header"
 import { MarketIntelligence } from "@/components/market-intelligence"
 import { PerformanceChart } from "@/components/performance-chart"
 import { holdings } from "@/lib/portfolio-data"
+import { loadFilings, loadMarketData, loadSp500Universe, type UniversePayload } from "@/lib/static-market-data"
 import type { FilingsPayload, MarketPayload, Security } from "@/lib/market-types"
-
-type UniversePayload = {
-  securities: Security[]
-  count: number
-  provider: string
-  updatedAt: string
-}
 
 function ViewPanel({ activeView }: { activeView: NavItem }) {
   const panels: Record<NavItem, { title: string; detail: string }> = {
@@ -65,14 +59,18 @@ export function DashboardShell() {
   const [filingsData, setFilingsData] = useState<FilingsPayload | null>(null)
   const [isMarketLoading, setIsMarketLoading] = useState(true)
 
-  const securities = universe?.securities.length
-    ? universe.securities
-    : holdings.map((holding) => ({
-        symbol: holding.id,
-        name: holding.name,
-        sector: holding.sector,
-        exchange: holding.exchange,
-      }))
+  const securities = useMemo(
+    () =>
+      universe?.securities.length
+        ? universe.securities
+        : holdings.map((holding) => ({
+            symbol: holding.id,
+            name: holding.name,
+            sector: holding.sector,
+            exchange: holding.exchange,
+          })),
+    [universe],
+  )
   const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol) ?? securities[0]
   const quoteSymbols = useMemo(() => {
     return securities.map((security) => security.symbol)
@@ -82,10 +80,9 @@ export function DashboardShell() {
     let isMounted = true
 
     async function loadUniverse() {
-      const response = await fetch("/api/universe", { cache: "no-store" })
+      const payload = await loadSp500Universe()
 
-      if (response.ok && isMounted) {
-        const payload = (await response.json()) as UniversePayload
+      if (isMounted) {
         setUniverse(payload)
 
         if (!payload.securities.some((security) => security.symbol === selectedSymbol)) {
@@ -105,14 +102,7 @@ export function DashboardShell() {
     setIsMarketLoading(true)
 
     try {
-      const symbols = quoteSymbols.join(",")
-      const response = await fetch(`/api/market?symbols=${encodeURIComponent(symbols)}&optionSymbol=${selectedSymbol}`, {
-        cache: "no-store",
-      })
-
-      if (response.ok) {
-        setMarketData((await response.json()) as MarketPayload)
-      }
+      setMarketData(await loadMarketData(quoteSymbols, selectedSymbol))
     } finally {
       setIsMarketLoading(false)
     }
@@ -128,23 +118,21 @@ export function DashboardShell() {
   useEffect(() => {
     let isMounted = true
 
-    async function loadFilings() {
-      const response = await fetch(`/api/filings?symbol=${selectedSymbol}`, {
-        cache: "no-store",
-      })
+    async function refreshFilings() {
+      const payload = await loadFilings(selectedSymbol, securities)
 
-      if (response.ok && isMounted) {
-        setFilingsData((await response.json()) as FilingsPayload)
+      if (isMounted) {
+        setFilingsData(payload)
       }
     }
 
     setFilingsData(null)
-    loadFilings()
+    refreshFilings()
 
     return () => {
       isMounted = false
     }
-  }, [selectedSymbol])
+  }, [selectedSymbol, securities])
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {

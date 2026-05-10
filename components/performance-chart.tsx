@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Activity, Search } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { formatCurrency, formatPercent } from "@/lib/portfolio-data"
+import { loadPriceHistory } from "@/lib/static-market-data"
 import type { PriceHistoryPayload, Security } from "@/lib/market-types"
 
 type PerformanceChartProps = {
@@ -24,12 +25,10 @@ export function PerformanceChart({ securities, symbol, onSymbolChange }: Perform
       setIsLoading(true)
 
       try {
-        const response = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}`, {
-          cache: "no-store",
-        })
+        const payload = await loadPriceHistory(symbol)
 
-        if (response.ok && isMounted) {
-          setHistory((await response.json()) as PriceHistoryPayload)
+        if (isMounted) {
+          setHistory(payload)
         }
       } finally {
         if (isMounted) {
