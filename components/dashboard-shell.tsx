@@ -5,6 +5,7 @@ import { TickerList, type SortKey } from "@/components/ticker-list"
 import { Sidebar, type NavItem } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { MarketIntelligence } from "@/components/market-intelligence"
+import { NetflixValuationResearch } from "@/components/netflix-valuation-research"
 import { PerformanceChart } from "@/components/performance-chart"
 import { holdings } from "@/lib/portfolio-data"
 import { loadFilings, loadMarketData, loadSp500Universe, type UniversePayload } from "@/lib/static-market-data"
@@ -26,7 +27,7 @@ function ViewPanel({ activeView }: { activeView: NavItem }) {
     },
     researcher: {
       title: "Researcher",
-      detail: "Select any company to pull recent 10-K/10-Q filings and structured SEC financial facts.",
+      detail: "Netflix real-options valuation model built from the provided workbook, research notes, yfinance, Monte Carlo simulation, decision trees, and Black-Scholes approximations.",
     },
     funds: {
       title: "Datasets",
@@ -45,6 +46,34 @@ function ViewPanel({ activeView }: { activeView: NavItem }) {
       <h2 className="text-xl font-medium text-white">{panel.title}</h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-[#919191]">{panel.detail}</p>
     </section>
+  )
+}
+
+function MobileNav({ activeView, onNavigate }: { activeView: NavItem; onNavigate: (item: NavItem) => void }) {
+  const items: Array<{ id: NavItem; label: string }> = [
+    { id: "dashboard", label: "Database" },
+    { id: "analytics", label: "Analytics" },
+    { id: "arbitrader", label: "Screener" },
+    { id: "researcher", label: "Researcher" },
+    { id: "funds", label: "Datasets" },
+  ]
+
+  return (
+    <div className="md:hidden px-6 pt-24">
+      <div className="flex gap-2 overflow-x-auto rounded-xl bg-[#0D0D0D] p-2">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onNavigate(item.id)}
+            className={`h-9 shrink-0 rounded-lg px-3 text-sm transition-colors ${
+              activeView === item.id ? "bg-[#1F1F1F] text-white" : "text-[#919191]"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -75,6 +104,18 @@ export function DashboardShell() {
   const quoteSymbols = useMemo(() => {
     return securities.map((security) => security.symbol)
   }, [securities])
+
+  useEffect(() => {
+    const hash = window.location.hash.replace("#", "") as NavItem
+    if (["dashboard", "analytics", "arbitrader", "researcher", "funds"].includes(hash)) {
+      setActiveView(hash)
+    }
+  }, [])
+
+  const handleNavigate = (item: NavItem) => {
+    setActiveView(item)
+    window.history.replaceState(null, "", `#${item}`)
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -156,40 +197,47 @@ export function DashboardShell() {
       />
 
       <div className="h-full overflow-y-auto no-scrollbar">
-        <main className="flex min-h-full gap-6 p-6 pt-24">
-          <Sidebar activeItem={activeView} onNavigate={setActiveView} onSupport={() => window.location.href = "mailto:support@bgilman.co"} />
+        <MobileNav activeView={activeView} onNavigate={handleNavigate} />
+        <main className="flex min-h-full gap-6 p-6 pt-6 md:pt-24">
+          <Sidebar activeItem={activeView} onNavigate={handleNavigate} onSupport={() => window.location.href = "mailto:support@bgilman.co"} />
 
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <ViewPanel activeView={activeView} />
-            <PerformanceChart
-              securities={securities}
-              symbol={selectedSecurity?.symbol ?? selectedSymbol}
-              onSymbolChange={(symbol) => {
-                setSelectedSymbol(symbol)
-                setActiveView("dashboard")
-              }}
-            />
-            <TickerList
-              securities={securities}
-              quotes={marketData?.quotes ?? []}
-              selectedSymbol={selectedSecurity?.symbol ?? selectedSymbol}
-              search={search}
-              sortKey={sortKey}
-              sortDirection={sortDirection}
-              onSearchChange={setSearch}
-              onSelect={(symbol) => {
-                setSelectedSymbol(symbol)
-                setActiveView("dashboard")
-              }}
-              onSort={handleSort}
-            />
-            <MarketIntelligence
-              symbol={selectedSecurity?.symbol ?? selectedSymbol}
-              market={marketData}
-              filings={filingsData}
-              isLoading={isMarketLoading}
-              onRefresh={refreshMarketData}
-            />
+            {activeView === "researcher" ? (
+              <NetflixValuationResearch />
+            ) : (
+              <>
+                <PerformanceChart
+                  securities={securities}
+                  symbol={selectedSecurity?.symbol ?? selectedSymbol}
+                  onSymbolChange={(symbol) => {
+                    setSelectedSymbol(symbol)
+                    setActiveView("dashboard")
+                  }}
+                />
+                <TickerList
+                  securities={securities}
+                  quotes={marketData?.quotes ?? []}
+                  selectedSymbol={selectedSecurity?.symbol ?? selectedSymbol}
+                  search={search}
+                  sortKey={sortKey}
+                  sortDirection={sortDirection}
+                  onSearchChange={setSearch}
+                  onSelect={(symbol) => {
+                    setSelectedSymbol(symbol)
+                    setActiveView("dashboard")
+                  }}
+                  onSort={handleSort}
+                />
+                <MarketIntelligence
+                  symbol={selectedSecurity?.symbol ?? selectedSymbol}
+                  market={marketData}
+                  filings={filingsData}
+                  isLoading={isMarketLoading}
+                  onRefresh={refreshMarketData}
+                />
+              </>
+            )}
 
             <div className="mt-4 flex items-center justify-end gap-2">
               <div className={`h-[13px] w-[13px] rounded-full ${marketData?.isLive ? "bg-[#86efac]" : "bg-[#f59e0b]"}`} />

@@ -52,6 +52,11 @@ jobs:
       - name: Generate Yahoo market snapshot
         run: python scripts/fetch_yfinance_data.py
 
+      - name: Generate SEC EDGAR snapshot
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python scripts/fetch_sec_data.py
+
       - name: Build static site
         env:
           GITHUB_PAGES: true

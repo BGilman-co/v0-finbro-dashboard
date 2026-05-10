@@ -16,6 +16,7 @@ import type {
 const sp500CsvUrl = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
 const yfinanceSnapshotUrl = `${appBasePath}/data/yfinance-snapshot.json`
+const secSnapshotUrl = `${appBasePath}/data/sec-snapshot.json`
 
 function parseCsvLine(line: string) {
   const cells: string[] = []
@@ -89,6 +90,31 @@ async function loadYfinanceSnapshot() {
   }
 
   return snapshotPromise
+}
+
+type SecSnapshot = {
+  provider: "SEC EDGAR"
+  updatedAt: string
+  companies: Record<string, FilingsPayload>
+  message: string
+}
+
+let secSnapshotPromise: Promise<SecSnapshot | null> | null = null
+
+async function loadSecSnapshot() {
+  if (!secSnapshotPromise) {
+    secSnapshotPromise = fetch(secSnapshotUrl, { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`)
+        }
+
+        return response.json() as Promise<SecSnapshot>
+      })
+      .catch(() => null)
+  }
+
+  return secSnapshotPromise
 }
 
 export async function loadSp500Universe(): Promise<UniversePayload> {
@@ -339,6 +365,16 @@ function latestByForm(values: NonNullable<ReturnType<typeof pickFactUnits>>["val
     .sort((first, second) => `${second.end ?? ""}-${second.filed ?? ""}`.localeCompare(`${first.end ?? ""}-${first.filed ?? ""}`))[0]
 }
 
+function statementCandidateScore(
+  annual: ReturnType<typeof latestByForm>,
+  quarterly: ReturnType<typeof latestByForm>,
+) {
+  return [
+    `${annual?.end ?? ""}-${annual?.filed ?? ""}`,
+    `${quarterly?.end ?? ""}-${quarterly?.filed ?? ""}`,
+  ].sort((first, second) => second.localeCompare(first))[0]
+}
+
 function buildFinancialStatements(companyFacts: CompanyFacts): FinancialStatement[] {
   const facts = companyFacts.facts?.["us-gaap"] ?? {}
 
@@ -346,30 +382,51 @@ function buildFinancialStatements(companyFacts: CompanyFacts): FinancialStatemen
     .map((statement): FinancialStatement => {
       const rows = statement.rows
         .map((definition): FinancialStatementLine | null => {
-          const tag = definition.tags.find((candidate) => pickFactUnits(facts[candidate]))
-          const units = tag ? pickFactUnits(facts[tag]) : null
+          const selected = definition.tags.reduce<{
+            tag: string
+            units: NonNullable<ReturnType<typeof pickFactUnits>>
+            annual: ReturnType<typeof latestByForm>
+            quarterly: ReturnType<typeof latestByForm>
+            score: string
+          } | null>((current, candidate) => {
+            const units = pickFactUnits(facts[candidate])
 
-          if (!tag || !units) {
-            return null
-          }
+            if (!units) {
+              return current
+            }
 
-          const annual = latestByForm(units.values, ["10-K", "20-F", "40-F"])
-          const quarterly = latestByForm(units.values, ["10-Q"])
+            const annual = latestByForm(units.values, ["10-K", "20-F", "40-F"])
+            const quarterly = latestByForm(units.values, ["10-Q"])
 
-          if (!annual && !quarterly) {
+            if (!annual && !quarterly) {
+              return current
+            }
+
+            const next = {
+              tag: candidate,
+              units,
+              annual,
+              quarterly,
+              score: statementCandidateScore(annual, quarterly),
+            }
+
+            return !current || next.score > current.score ? next : current
+          }, null)
+
+          if (!selected) {
             return null
           }
 
           return {
             label: definition.label,
-            tag,
-            unit: units.unit,
-            annual: annual?.val,
-            annualPeriod: annual?.end,
-            annualFiled: annual?.filed,
-            quarterly: quarterly?.val,
-            quarterlyPeriod: quarterly?.end,
-            quarterlyFiled: quarterly?.filed,
+            tag: selected.tag,
+            unit: selected.units.unit,
+            annual: selected.annual?.val,
+            annualPeriod: selected.annual?.end,
+            annualFiled: selected.annual?.filed,
+            quarterly: selected.quarterly?.val,
+            quarterlyPeriod: selected.quarterly?.end,
+            quarterlyFiled: selected.quarterly?.filed,
           }
         })
         .filter((row): row is FinancialStatementLine => Boolean(row))
@@ -394,6 +451,12 @@ export async function loadFilings(symbol: string, securities: Security[]): Promi
   const updatedAt = new Date().toISOString()
   const security = securities.find((item) => item.symbol === normalizedSymbol)
   const cik = security?.cik
+  const secSnapshot = await loadSecSnapshot()
+  const snapshotCompany = secSnapshot?.companies?.[normalizedSymbol]
+
+  if (snapshotCompany) {
+    return snapshotCompany
+  }
 
   if (!cik) {
     return {
