@@ -18,6 +18,10 @@ import type {
 } from "@/lib/market-types"
 
 const sp500CsvUrl = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
+const yahooQuoteUrl = "https://query1.finance.yahoo.com/v7/finance/quote"
+const yahooChartBaseUrl = "https://query1.finance.yahoo.com/v8/finance/chart"
+const liveQuoteBatchSize = 100
+const liveChartQuoteLimit = 40
 
 const securitySchema = z.object({
   symbol: z.string(),
@@ -83,6 +87,47 @@ const secSnapshotSchema = z.object({
 })
 
 type SecSnapshot = z.infer<typeof secSnapshotSchema>
+
+const yahooQuoteResultSchema = z.object({
+  symbol: z.string(),
+  regularMarketPrice: z.number().optional(),
+  regularMarketPreviousClose: z.number().optional(),
+  regularMarketChange: z.number().optional(),
+  regularMarketChangePercent: z.number().optional(),
+  regularMarketDayHigh: z.number().optional(),
+  regularMarketDayLow: z.number().optional(),
+  regularMarketVolume: z.number().optional(),
+  regularMarketTime: z.number().optional(),
+})
+
+const yahooQuoteResponseSchema = z.object({
+  quoteResponse: z.object({
+    result: z.array(yahooQuoteResultSchema),
+  }),
+})
+
+type YahooQuoteResult = z.infer<typeof yahooQuoteResultSchema>
+
+const yahooChartResponseSchema = z.object({
+  chart: z.object({
+    result: z
+      .array(
+        z.object({
+          meta: z.object({
+            symbol: z.string(),
+            regularMarketPrice: z.number().optional(),
+            chartPreviousClose: z.number().optional(),
+            previousClose: z.number().optional(),
+            regularMarketDayHigh: z.number().optional(),
+            regularMarketDayLow: z.number().optional(),
+            regularMarketVolume: z.number().optional(),
+            regularMarketTime: z.number().optional(),
+          }),
+        }),
+      )
+      .nullable(),
+  }),
+})
 
 function parseCsvLine(line: string) {
   const cells: string[] = []
@@ -156,6 +201,145 @@ async function loadYfinanceSnapshot() {
 
 async function loadSecSnapshot() {
   return loadJsonFromSource<SecSnapshot>(process.env.SEC_SNAPSHOT_URL, "sec-snapshot.json", secSnapshotSchema)
+}
+
+function chunkSymbols(symbols: string[]) {
+  const chunks: string[][] = []
+
+  for (let index = 0; index < symbols.length; index += liveQuoteBatchSize) {
+    chunks.push(symbols.slice(index, index + liveQuoteBatchSize))
+  }
+
+  return chunks
+}
+
+function yahooSymbol(symbol: string) {
+  return normalizeSymbol(symbol)
+}
+
+function toMarketQuote(result: YahooQuoteResult, fallback?: MarketQuote): MarketQuote | null {
+  const symbol = normalizeSymbol(result.symbol)
+  const price = result.regularMarketPrice ?? fallback?.price
+  const previousClose = result.regularMarketPreviousClose ?? fallback?.previousClose ?? price
+
+  if (price === undefined || previousClose === undefined) {
+    return null
+  }
+
+  const change = result.regularMarketChange ?? price - previousClose
+  const changePercent =
+    result.regularMarketChangePercent ?? (previousClose === 0 ? 0 : (change / previousClose) * 100)
+  const updatedAt = result.regularMarketTime
+    ? new Date(result.regularMarketTime * 1000).toISOString()
+    : new Date().toISOString()
+
+  return {
+    symbol,
+    price,
+    previousClose,
+    change,
+    changePercent,
+    dayHigh: result.regularMarketDayHigh ?? fallback?.dayHigh,
+    dayLow: result.regularMarketDayLow ?? fallback?.dayLow,
+    volume: result.regularMarketVolume ?? fallback?.volume,
+    updatedAt,
+  }
+}
+
+async function loadLiveQuotes(symbols: string[], fallbackQuotes: MarketQuote[]) {
+  const fallbackMap = new Map(fallbackQuotes.map((quote) => [quote.symbol, quote]))
+  const liveQuotes: MarketQuote[] = []
+
+  for (const batch of chunkSymbols(symbols)) {
+    const url = new URL(yahooQuoteUrl)
+    url.searchParams.set("symbols", batch.map(yahooSymbol).join(","))
+
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "B-Gilman-Co-Dashboard/1.0",
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Yahoo Finance quote request failed with ${response.status}`)
+    }
+
+    const parsed = yahooQuoteResponseSchema.parse(await response.json())
+
+    for (const result of parsed.quoteResponse.result) {
+      const quote = toMarketQuote(result, fallbackMap.get(normalizeSymbol(result.symbol)))
+
+      if (quote) {
+        liveQuotes.push(quote)
+      }
+    }
+  }
+
+  return liveQuotes
+}
+
+async function loadLiveChartQuote(symbol: string, fallback?: MarketQuote) {
+  const url = new URL(`${yahooChartBaseUrl}/${encodeURIComponent(yahooSymbol(symbol))}`)
+  url.searchParams.set("range", "1d")
+  url.searchParams.set("interval", "1m")
+
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Mozilla/5.0",
+    },
+  })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const parsed = yahooChartResponseSchema.safeParse(await response.json())
+  const meta = parsed.success ? parsed.data.chart.result?.[0]?.meta : null
+
+  if (!meta) {
+    return null
+  }
+
+  return toMarketQuote(
+    {
+      symbol: meta.symbol,
+      regularMarketPrice: meta.regularMarketPrice,
+      regularMarketPreviousClose: meta.previousClose ?? meta.chartPreviousClose,
+      regularMarketDayHigh: meta.regularMarketDayHigh,
+      regularMarketDayLow: meta.regularMarketDayLow,
+      regularMarketVolume: meta.regularMarketVolume,
+      regularMarketTime: meta.regularMarketTime,
+    },
+    fallback,
+  )
+}
+
+async function loadLiveChartQuotes(symbols: string[], fallbackQuotes: MarketQuote[]) {
+  const fallbackMap = new Map(fallbackQuotes.map((quote) => [quote.symbol, quote]))
+  const limitedSymbols = symbols.slice(0, liveChartQuoteLimit)
+  const quotes = await Promise.all(
+    limitedSymbols.map((symbol) => loadLiveChartQuote(symbol, fallbackMap.get(symbol)).catch(() => null)),
+  )
+
+  return quotes.filter((quote): quote is MarketQuote => Boolean(quote))
+}
+
+async function loadBestLiveQuotes(symbols: string[], fallbackQuotes: MarketQuote[]) {
+  try {
+    const liveQuotes = await loadLiveQuotes(symbols, fallbackQuotes)
+
+    if (liveQuotes.length) {
+      return liveQuotes
+    }
+  } catch {
+    // Yahoo's multi-quote endpoint can reject unauthenticated requests; chart quotes are the live fallback.
+  }
+
+  return loadLiveChartQuotes(symbols, fallbackQuotes)
 }
 
 export async function loadSp500Universe(): Promise<UniversePayload> {
@@ -237,31 +421,61 @@ export async function loadSp500Universe(): Promise<UniversePayload> {
 export async function loadMarketData(symbols: string[], optionSymbol: string): Promise<MarketPayload> {
   const normalizedSymbols = symbols.map(normalizeSymbol).filter(Boolean)
   const selectedOptionSymbol = normalizeSymbol(optionSymbol || normalizedSymbols[0] || "AAPL")
+  const liveRefreshSymbols = Array.from(new Set([selectedOptionSymbol, ...normalizedSymbols]))
   const updatedAt = new Date().toISOString()
   const snapshot = await loadYfinanceSnapshot()
+  const requestedSymbols = new Set(normalizedSymbols)
+  const snapshotQuotes = snapshot?.quotes.filter((quote) => requestedSymbols.has(quote.symbol)) ?? []
 
   if (!snapshot) {
-    return {
-      quotes: [],
-      options: [],
-      provider: "yfinance / Yahoo Finance",
-      isLive: false,
-      message:
-        "No market snapshot was found. Configure MARKET_SNAPSHOT_URL in Vercel or deploy with public/data/yfinance-snapshot.json.",
-      updatedAt,
+    try {
+      const liveQuotes = await loadBestLiveQuotes(liveRefreshSymbols, [])
+
+      return {
+        quotes: liveQuotes,
+        options: [],
+        provider: "Yahoo Finance live quotes",
+        isLive: liveQuotes.length > 0,
+        message: `${liveQuotes.length} live quote records loaded by the API.`,
+        updatedAt,
+      }
+    } catch {
+      return {
+        quotes: [],
+        options: [],
+        provider: "Yahoo Finance",
+        isLive: false,
+        message:
+          "No market snapshot was found and live quotes were unavailable. Configure MARKET_SNAPSHOT_URL in Vercel or deploy with public/data/yfinance-snapshot.json.",
+        updatedAt,
+      }
     }
   }
 
-  const requestedSymbols = new Set(normalizedSymbols)
-  const quotes = snapshot.quotes.filter((quote) => requestedSymbols.has(quote.symbol))
+  try {
+    const liveQuotes = await loadBestLiveQuotes(liveRefreshSymbols, snapshotQuotes)
+    const liveQuoteMap = new Map(liveQuotes.map((quote) => [quote.symbol, quote]))
+    const quotes = normalizedSymbols
+      .map((symbol) => liveQuoteMap.get(symbol) ?? snapshotQuotes.find((quote) => quote.symbol === symbol))
+      .filter((quote): quote is MarketQuote => Boolean(quote))
 
-  return {
-    quotes,
-    options: snapshot.options?.[selectedOptionSymbol] ?? [],
-    provider: snapshot.provider,
-    isLive: quotes.length > 0,
-    message: `${quotes.length} S&P 500 quote records loaded by the Vercel API.`,
-    updatedAt: snapshot.updatedAt,
+    return {
+      quotes,
+      options: snapshot.options?.[selectedOptionSymbol] ?? [],
+      provider: "Yahoo Finance live quotes",
+      isLive: liveQuotes.length > 0,
+      message: `${liveQuotes.length} live quote records loaded by the API; snapshot data fills any missing tickers.`,
+      updatedAt,
+    }
+  } catch {
+    return {
+      quotes: snapshotQuotes,
+      options: snapshot.options?.[selectedOptionSymbol] ?? [],
+      provider: snapshot.provider,
+      isLive: false,
+      message: `${snapshotQuotes.length} S&P 500 quote records loaded from the latest yfinance snapshot because live quotes were unavailable.`,
+      updatedAt: snapshot.updatedAt,
+    }
   }
 }
 

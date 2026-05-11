@@ -191,7 +191,7 @@ export function DashboardShell() {
 
   useEffect(() => {
     refreshMarketData()
-    const interval = window.setInterval(refreshMarketData, 60_000)
+    const interval = window.setInterval(refreshMarketData, 55_000)
 
     return () => window.clearInterval(interval)
   }, [refreshMarketData])
