@@ -45,11 +45,11 @@ export async function POST(request: Request) {
 
   if (error) {
     if (error.message.toLowerCase().includes("already")) {
-      const { error: resendExistingError } = await supabaseServer.auth.resend({
-        type: "signup",
+      const { error: resendExistingError } = await supabaseServer.auth.signInWithOtp({
         email,
         options: {
           emailRedirectTo,
+          shouldCreateUser: false,
         },
       })
 
@@ -71,11 +71,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: error.status ?? 400 })
   }
 
-  const { error: resendError } = await supabaseServer.auth.resend({
-    type: "signup",
+  const { error: resendError } = await supabaseServer.auth.signInWithOtp({
     email,
     options: {
       emailRedirectTo,
+      shouldCreateUser: false,
     },
   })
 

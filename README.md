@@ -23,6 +23,8 @@ If you see `Invalid API key`, the most common cause is that `NEXT_PUBLIC_SUPABAS
 
 Vercel should have real values for `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`; the browser client also includes the current public Supabase anon key as a fallback so login keeps working if Vercel is accidentally left on a placeholder value. Signup and verification email delivery still require `SUPABASE_SERVICE_ROLE_KEY` at runtime.
 
+Supabase may return `email rate limit exceeded` when too many verification or magic-link emails are requested through the default sender. For production, configure a dedicated SMTP provider in Supabase Auth and adjust email rate limits to match expected signup volume.
+
 ## Vercel Deployment
 
 Vercel is the only deployment target for this app. Use the default Next.js framework preset with `pnpm install --frozen-lockfile` and `pnpm build`. The app uses dynamic route handlers under `app/api/` for market data, price history, S&P 500 universe data, SEC filings, and authentication, so it should be deployed as a normal Vercel Next.js app rather than a static export or GitHub Pages site.

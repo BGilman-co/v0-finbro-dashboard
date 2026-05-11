@@ -16,6 +16,8 @@ Date: 2026-05-11
 - The production Vercel deployment was inspected and found to be built with a placeholder public anon key, which explains the repeated `Invalid API key` message on the live login page.
 - Removed the build-time Supabase environment gate from `pnpm build` after it blocked Vercel deployments; auth configuration is checked at runtime instead.
 - Added a browser-safe fallback for the public Supabase URL and anon key after Vercel repeatedly built with `NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key`.
+- Changed verification delivery to use Supabase magic-link email after server-side user creation, because Supabase documents that admin-created users do not automatically receive confirmation emails.
+- Local verification email tests now reach Supabase's email sender; Supabase currently responds with `email rate limit exceeded` after repeated test sends.
 
 ## Dashboard Settings To Confirm
 
@@ -26,6 +28,7 @@ Date: 2026-05-11
   - `http://127.0.0.1:3000/auth/callback`
   - any deployed domain callback URL used in Vercel, such as `https://<your-domain>/auth/callback`
 - If verification emails still do not arrive, verify the project's SMTP/email sender configuration and any provider-level sending limits in Supabase.
+- If Supabase returns `email rate limit exceeded`, wait for the rate-limit window to reset or configure a production SMTP provider and higher email send limits in Supabase Auth.
 
 ## Verification
 
