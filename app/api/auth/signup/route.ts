@@ -3,7 +3,6 @@ import { z } from "zod"
 
 import {
   createSupabaseAdminClient,
-  createSupabaseServerClient,
   getSupabaseAdminConfigError,
   isSupabaseAdminConfigured,
 } from "@/lib/supabase-admin"
@@ -31,65 +30,90 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
-  const supabaseServer = createSupabaseServerClient()
   const email = parsed.data.email.toLowerCase()
   const origin = new URL(request.url).origin
   const emailRedirectTo = `${origin}/auth/callback`
 
-  const { error } = await supabaseAdmin.auth.admin.createUser({
+  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: emailRedirectTo,
+    data: { email },
+  })
+
+  if (!error && data.user) {
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+      password: parsed.data.password,
+      user_metadata: { email },
+    })
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: updateError.status ?? 400 })
+    }
+
+    return NextResponse.json({ email, requiresEmailVerification: true, verificationEmailSent: true }, { status: 201 })
+  }
+
+  if (error && error.message.toLowerCase().includes("already")) {
+    const { data: reinviteData, error: reinviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: emailRedirectTo,
+      data: { email },
+    })
+
+    if (reinviteError) {
+      return NextResponse.json(
+        {
+          email,
+          requiresEmailVerification: true,
+          verificationEmailSent: false,
+          warning: reinviteError.message,
+        },
+        { status: reinviteError.status ?? 202 },
+      )
+    }
+
+    if (reinviteData.user) {
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(reinviteData.user.id, {
+        password: parsed.data.password,
+        user_metadata: { email },
+      })
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: updateError.status ?? 400 })
+      }
+    }
+
+    return NextResponse.json({ email, requiresEmailVerification: true, verificationEmailSent: true }, { status: 202 })
+  }
+
+  if (error) {
+    return NextResponse.json(
+      {
+        email,
+        requiresEmailVerification: true,
+        verificationEmailSent: false,
+        warning: error.message,
+      },
+      { status: error.status ?? 202 },
+    )
+  }
+
+  const { error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: parsed.data.password,
     email_confirm: false,
     user_metadata: { email },
   })
 
-  if (error) {
-    if (error.message.toLowerCase().includes("already")) {
-      const { error: resendExistingError } = await supabaseServer.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo,
-          shouldCreateUser: false,
-        },
-      })
-
-      if (resendExistingError) {
-        return NextResponse.json(
-          {
-            email,
-            requiresEmailVerification: true,
-            verificationEmailSent: false,
-            warning: resendExistingError.message,
-          },
-          { status: 202 },
-        )
-      }
-
-      return NextResponse.json({ email, requiresEmailVerification: true, verificationEmailSent: true }, { status: 202 })
-    }
-
-    return NextResponse.json({ error: error.message }, { status: error.status ?? 400 })
+  if (createError) {
+    return NextResponse.json({ error: createError.message }, { status: createError.status ?? 400 })
   }
 
-  const { error: resendError } = await supabaseServer.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo,
-      shouldCreateUser: false,
+  return NextResponse.json(
+    {
+      email,
+      requiresEmailVerification: true,
+      verificationEmailSent: false,
+      warning: "Account created, but Supabase did not send an invite email.",
     },
-  })
-
-  if (resendError) {
-    return NextResponse.json(
-      {
-        email,
-        requiresEmailVerification: true,
-        verificationEmailSent: false,
-        warning: resendError.message,
-      },
-      { status: 202 },
-    )
-  }
-
-  return NextResponse.json({ email, requiresEmailVerification: true, verificationEmailSent: true }, { status: 201 })
+    { status: 202 },
+  )
 }

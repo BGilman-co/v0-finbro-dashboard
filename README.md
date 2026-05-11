@@ -17,7 +17,7 @@ In the Codex desktop environment, `pnpm dev` prepends the bundled local Node run
 
 Create a Supabase project and copy `.env.example` to `.env.local` with your public Supabase URL, anon key, and server-only service role key. The login and signup screens accept any email address and passwords with at least 4 characters. New accounts must verify their email address before signing in.
 
-This app creates new users through a server route backed by the service role key so it can keep the app's 4-character password rule, then asks Supabase to send the signup verification email. In the Supabase dashboard, keep `Authentication -> Providers -> Email` enabled and keep email confirmations enabled for this project. If you use a hosted production domain, add its `/auth/callback` URL to the Auth redirect allow list alongside your local URLs. Never expose `SUPABASE_SERVICE_ROLE_KEY` to client code.
+This app invites new users through a server route backed by the service role key so Supabase sends the verification email, then stores the submitted password on the invited user. In the Supabase dashboard, keep `Authentication -> Providers -> Email` enabled and keep email confirmations enabled for this project. If you use a hosted production domain, add its `/auth/callback` URL to the Auth redirect allow list alongside your local URLs. Never expose `SUPABASE_SERVICE_ROLE_KEY` to client code.
 
 If you see `Invalid API key`, the most common cause is that `NEXT_PUBLIC_SUPABASE_URL` points to one Supabase project while `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `SUPABASE_SERVICE_ROLE_KEY` came from another. These values must all belong to the same project ref.
 
