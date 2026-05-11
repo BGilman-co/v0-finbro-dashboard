@@ -102,8 +102,11 @@ export type PriceHistoryPoint = {
   volume?: number
 }
 
+export type PriceHistoryRange = "1w" | "1m" | "ytd" | "1y" | "5y" | "10y" | "all"
+
 export type PriceHistoryPayload = {
   symbol: string
+  range: PriceHistoryRange
   points: PriceHistoryPoint[]
   provider: string
   message: string

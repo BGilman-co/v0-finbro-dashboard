@@ -13,6 +13,8 @@ import type {
   MarketQuote,
   OptionContract,
   PriceHistoryPayload,
+  PriceHistoryPoint,
+  PriceHistoryRange,
   Security,
   UniversePayload,
 } from "@/lib/market-types"
@@ -122,12 +124,40 @@ const yahooChartResponseSchema = z.object({
             regularMarketDayLow: z.number().optional(),
             regularMarketVolume: z.number().optional(),
             regularMarketTime: z.number().optional(),
+            currency: z.string().optional(),
+          }),
+          timestamp: z.array(z.number()).nullable().optional(),
+          indicators: z.object({
+            quote: z
+              .array(
+                z.object({
+                  open: z.array(z.number().nullable()).optional(),
+                  high: z.array(z.number().nullable()).optional(),
+                  low: z.array(z.number().nullable()).optional(),
+                  close: z.array(z.number().nullable()).optional(),
+                  volume: z.array(z.number().nullable()).optional(),
+                }),
+              )
+              .optional(),
           }),
         }),
       )
       .nullable(),
   }),
 })
+
+const priceHistoryRangeConfig: Record<
+  PriceHistoryRange,
+  { range: string; interval: string; label: string; fallbackDays?: number; isAllTime?: boolean }
+> = {
+  "1w": { range: "7d", interval: "1h", label: "1 week", fallbackDays: 7 },
+  "1m": { range: "1mo", interval: "1d", label: "1 month", fallbackDays: 31 },
+  ytd: { range: "ytd", interval: "1d", label: "YTD" },
+  "1y": { range: "1y", interval: "1wk", label: "1 year", fallbackDays: 366 },
+  "5y": { range: "5y", interval: "1mo", label: "5 year", fallbackDays: 365 * 5 + 2 },
+  "10y": { range: "10y", interval: "1mo", label: "10 year", fallbackDays: 365 * 10 + 3 },
+  all: { range: "max", interval: "1mo", label: "all-time", isAllTime: true },
+}
 
 function parseCsvLine(line: string) {
   const cells: string[] = []
@@ -342,6 +372,113 @@ async function loadBestLiveQuotes(symbols: string[], fallbackQuotes: MarketQuote
   return loadLiveChartQuotes(symbols, fallbackQuotes)
 }
 
+function toHistoryLabel(date: Date, interval: string) {
+  if (interval === "1h") {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+    }).format(date)
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date)
+}
+
+function toPriceHistoryPoint(timestampSeconds: number, quote: {
+  open?: Array<number | null>
+  high?: Array<number | null>
+  low?: Array<number | null>
+  close?: Array<number | null>
+  volume?: Array<number | null>
+}, index: number, interval: string): PriceHistoryPoint | null {
+  const close = quote.close?.[index]
+
+  if (close === null || close === undefined) {
+    return null
+  }
+
+  const date = new Date(timestampSeconds * 1000)
+
+  return {
+    date: date.toISOString(),
+    label: toHistoryLabel(date, interval),
+    open: quote.open?.[index] ?? undefined,
+    high: quote.high?.[index] ?? undefined,
+    low: quote.low?.[index] ?? undefined,
+    close,
+    volume: quote.volume?.[index] ?? undefined,
+  }
+}
+
+function filterFallbackHistory(points: PriceHistoryPoint[], range: PriceHistoryRange) {
+  const config = priceHistoryRangeConfig[range]
+
+  if (config.isAllTime || points.length === 0) {
+    return points
+  }
+
+  if (range === "ytd") {
+    const currentYear = new Date().getUTCFullYear()
+    return points.filter((point) => new Date(point.date).getUTCFullYear() === currentYear)
+  }
+
+  if (!config.fallbackDays) {
+    return points
+  }
+
+  const cutoff = new Date()
+  cutoff.setUTCDate(cutoff.getUTCDate() - config.fallbackDays)
+
+  return points.filter((point) => new Date(point.date) >= cutoff)
+}
+
+async function loadLivePriceHistory(symbol: string, range: PriceHistoryRange) {
+  const config = priceHistoryRangeConfig[range]
+  const url = new URL(`${yahooChartBaseUrl}/${encodeURIComponent(yahooSymbol(symbol))}`)
+  url.searchParams.set("range", config.range)
+  url.searchParams.set("interval", config.interval)
+  url.searchParams.set("includePrePost", "false")
+
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Mozilla/5.0",
+    },
+  })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const parsed = yahooChartResponseSchema.safeParse(await response.json())
+  const result = parsed.success ? parsed.data.chart.result?.[0] : null
+  const quote = result?.indicators.quote?.[0]
+  const timestamps = result?.timestamp ?? []
+
+  if (!result || !quote || !timestamps.length) {
+    return null
+  }
+
+  const points = timestamps
+    .map((timestamp, index) => toPriceHistoryPoint(timestamp, quote, index, config.interval))
+    .filter((point): point is PriceHistoryPoint => Boolean(point))
+
+  if (!points.length) {
+    return null
+  }
+
+  return {
+    points,
+    provider: "Yahoo Finance live chart",
+    message: `${points.length} ${config.label} price records loaded live from Yahoo Finance.`,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 export async function loadSp500Universe(): Promise<UniversePayload> {
   const updatedAt = new Date().toISOString()
   const snapshot = await loadYfinanceSnapshot()
@@ -479,19 +616,35 @@ export async function loadMarketData(symbols: string[], optionSymbol: string): P
   }
 }
 
-export async function loadPriceHistory(symbol: string): Promise<PriceHistoryPayload> {
+export async function loadPriceHistory(symbol: string, range: PriceHistoryRange): Promise<PriceHistoryPayload> {
   const normalizedSymbol = normalizeSymbol(symbol)
   const updatedAt = new Date().toISOString()
+  const liveHistory = await loadLivePriceHistory(normalizedSymbol, range).catch(() => null)
+
+  if (liveHistory) {
+    return {
+      symbol: normalizedSymbol,
+      range,
+      points: liveHistory.points,
+      provider: liveHistory.provider,
+      message: liveHistory.message,
+      updatedAt: liveHistory.updatedAt,
+    }
+  }
+
   const snapshot = await loadYfinanceSnapshot()
-  const points = snapshot?.histories?.[normalizedSymbol] ?? []
+  const snapshotPoints = snapshot?.histories?.[normalizedSymbol] ?? []
+  const points = filterFallbackHistory(snapshotPoints, range)
+  const rangeLabel = priceHistoryRangeConfig[range].label
 
   return {
     symbol: normalizedSymbol,
+    range,
     points,
     provider: snapshot?.provider ?? "yfinance / Yahoo Finance",
     message: points.length
-      ? `${points.length} daily price records loaded by the Vercel API.`
-      : "No yfinance price history was found for this ticker.",
+      ? `${points.length} ${rangeLabel} price records loaded from the snapshot fallback.`
+      : `No ${rangeLabel} price history was found for this ticker.`,
     updatedAt: snapshot?.updatedAt ?? updatedAt,
   }
 }
