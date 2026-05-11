@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-client"
-import { validateSupabaseEnv } from "@/lib/supabase-env"
 
 type AuthFormProps = {
   mode: "login" | "signup"
@@ -45,11 +44,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
 
     if (!isSupabaseConfigured()) {
-      const validation = validateSupabaseEnv({
-        url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-        anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      })
-      setMessage(validation.ok ? "Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to connect Supabase." : validation.error)
+      setMessage("Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to connect Supabase.")
       return
     }
 
