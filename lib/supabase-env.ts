@@ -11,7 +11,12 @@ function decodeJwtPayload(token: string) {
     throw new Error("Supabase key is not a valid JWT.")
   }
 
-  const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as {
+  const normalizedPayload = parts[1].replace(/-/g, "+").replace(/_/g, "/")
+  const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, "=")
+  const decodedPayload =
+    typeof Buffer === "undefined" ? atob(paddedPayload) : Buffer.from(parts[1], "base64url").toString("utf8")
+
+  const payload = JSON.parse(decodedPayload) as {
     ref?: string
     role?: string
   }

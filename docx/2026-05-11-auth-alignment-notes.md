@@ -4,16 +4,16 @@ Date: 2026-05-11
 
 ## Summary
 
-- Replaced the custom admin-user signup path with Supabase's native `auth.signUp()` flow.
+- Restored the custom server-side signup path so the app can keep a 4-character password minimum while still requiring Supabase email verification.
 - Removed the browser client's placeholder Supabase credentials so missing config fails clearly instead of producing misleading auth errors.
 - Added runtime validation that checks whether the Supabase URL and keys belong to the same project ref before creating clients.
-- Matched the app password minimum to Supabase hosted Auth's default minimum of 6 characters.
+- Matched the app password minimum and local Supabase config to 4 characters.
 - Expanded local auth redirect URLs in `supabase/config.toml` to cover both `localhost` and `127.0.0.1`.
 
 ## Why
 
-- The previous signup flow created users through the admin API, then tried to trigger a signup verification email afterward. That path is brittle because it does not match Supabase's normal signup lifecycle.
 - The browser client used placeholder URL and API key fallbacks, which could surface as `Invalid API key` instead of clearly reporting missing environment configuration.
+- The production Vercel deployment was inspected and found to be built with a placeholder public anon key, which explains the repeated `Invalid API key` message on the live login page.
 
 ## Dashboard Settings To Confirm
 

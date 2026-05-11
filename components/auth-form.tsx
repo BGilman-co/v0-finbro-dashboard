@@ -19,7 +19,7 @@ type AuthFormProps = {
 
 const authSchema = z.object({
   email: z.string().trim().email("Enter a valid email address."),
-  password: z.string().min(6, "Password must be at least 6 characters."),
+  password: z.string().min(4, "Password must be at least 4 characters."),
 })
 
 export function AuthForm({ mode }: AuthFormProps) {
@@ -161,7 +161,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         <h1 className="text-2xl font-medium">{isSignup ? "Create account" : "Sign in"}</h1>
         <p className="mt-2 text-sm leading-6 text-[#919191]">
           {isSignup
-            ? "Create an account with a password of at least 6 characters, then verify your email before signing in."
+            ? "Create an account, then verify your email before signing in."
             : "Use the email and password for your verified account."}
         </p>
 
