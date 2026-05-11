@@ -1,9 +1,9 @@
 "use client"
 
 import type { ComponentType } from "react"
-import { Blocks, BarChart3, Rabbit, Container, Banknote, SquareArrowOutUpRight, Settings2, LogOut } from 'lucide-react'
+import { Blocks, BarChart3, Search, Container, Banknote, Database, SquareArrowOutUpRight, Settings2, LogOut } from 'lucide-react'
 
-export type NavItem = "dashboard" | "analytics" | "arbitrader" | "researcher" | "funds"
+export type NavItem = "dashboard" | "analytics" | "arbitrader" | "researcher" | "funds" | "wrds"
 
 type SidebarProps = {
   activeItem: NavItem
@@ -14,9 +14,10 @@ type SidebarProps = {
 const items: Array<{ id: NavItem; label: string; icon: ComponentType<{ className?: string }> }> = [
   { id: "dashboard", label: "DATABASE", icon: Blocks },
   { id: "analytics", label: "ANALYTICS", icon: BarChart3 },
-  { id: "arbitrader", label: "SCREENER", icon: Rabbit },
+  { id: "arbitrader", label: "SCREENER", icon: Search },
   { id: "researcher", label: "RESEARCHER", icon: Container },
   { id: "funds", label: "DATASETS", icon: Banknote },
+  { id: "wrds", label: "WRDS DATA", icon: Database },
 ]
 
 export function Sidebar({ activeItem, onNavigate, onSupport }: SidebarProps) {

@@ -8,6 +8,7 @@ import { Header } from "@/components/header"
 import { MarketIntelligence } from "@/components/market-intelligence"
 import { NetflixValuationResearch } from "@/components/netflix-valuation-research"
 import { PerformanceChart } from "@/components/performance-chart"
+import { WrdsDataPanel } from "@/components/wrds-data-panel"
 import { holdings } from "@/lib/portfolio-data"
 import { isSupabaseConfigured, supabase } from "@/lib/supabase-client"
 import { loadFilings, loadMarketData, loadSp500Universe, type UniversePayload } from "@/lib/static-market-data"
@@ -35,6 +36,10 @@ function ViewPanel({ activeView }: { activeView: NavItem }) {
       title: "Datasets",
       detail: "Market data is generated from yfinance/Yahoo Finance snapshots and official SEC EDGAR APIs.",
     },
+    wrds: {
+      title: "WRDS Data",
+      detail: "FactSet datasets served through the Wharton WRDS API in a separate workspace from the dashboard market data.",
+    },
   }
 
   const panel = panels[activeView]
@@ -58,6 +63,7 @@ function MobileNav({ activeView, onNavigate }: { activeView: NavItem; onNavigate
     { id: "arbitrader", label: "Screener" },
     { id: "researcher", label: "Researcher" },
     { id: "funds", label: "Datasets" },
+    { id: "wrds", label: "WRDS Data" },
   ]
 
   return (
@@ -147,7 +153,7 @@ export function DashboardShell() {
 
   useEffect(() => {
     const hash = window.location.hash.replace("#", "") as NavItem
-    if (["dashboard", "analytics", "arbitrader", "researcher", "funds"].includes(hash)) {
+    if (["dashboard", "analytics", "arbitrader", "researcher", "funds", "wrds"].includes(hash)) {
       setActiveView(hash)
     }
   }, [])
@@ -258,6 +264,8 @@ export function DashboardShell() {
             <ViewPanel activeView={activeView} />
             {activeView === "researcher" ? (
               <NetflixValuationResearch />
+            ) : activeView === "wrds" ? (
+              <WrdsDataPanel symbol={selectedSecurity?.symbol ?? selectedSymbol} companyName={selectedSecurity?.name} />
             ) : (
               <>
                 <PerformanceChart
