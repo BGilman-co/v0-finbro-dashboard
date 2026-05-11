@@ -13,6 +13,10 @@ import yfinance as yf
 SP500_CSV_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
 OUTPUT_PATH = Path("public/data/yfinance-snapshot.json")
 DEFAULT_OPTIONS_SYMBOLS = ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "META", "GOOGL", "AMD"]
+QUOTE_PERIOD = os.getenv("YFINANCE_QUOTE_PERIOD", "2d")
+QUOTE_INTERVAL = os.getenv("YFINANCE_QUOTE_INTERVAL", "1m")
+HISTORY_PERIOD = os.getenv("YFINANCE_HISTORY_PERIOD", "6mo")
+HISTORY_INTERVAL = os.getenv("YFINANCE_HISTORY_INTERVAL", "1d")
 
 
 def clean_number(value):
@@ -85,9 +89,27 @@ def dataframe_for_symbol(history, symbol):
     return history.dropna(how="all")
 
 
+def timestamp_date(timestamp):
+    if hasattr(timestamp, "to_pydatetime"):
+        return timestamp.to_pydatetime().date()
+
+    return timestamp.date()
+
+
+def timestamp_iso(timestamp):
+    if hasattr(timestamp, "to_pydatetime"):
+        value = timestamp.to_pydatetime()
+    else:
+        value = timestamp
+
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+
+    return value.astimezone(timezone.utc).isoformat()
+
+
 def build_quote(symbol, frame, updated_at):
     close = frame.get("Close")
-    volume = frame.get("Volume")
 
     if close is None:
         return None
@@ -96,19 +118,22 @@ def build_quote(symbol, frame, updated_at):
     if closes.empty:
         return None
 
+    latest_index = closes.index[-1]
+    latest_date = timestamp_date(latest_index)
+    session_frame = frame[[column for column in ["High", "Low", "Volume"] if column in frame.columns]].copy()
+    session_frame = session_frame[[timestamp_date(index) == latest_date for index in session_frame.index]]
+    previous_session_closes = closes[[timestamp_date(index) < latest_date for index in closes.index]]
+
     latest_close = clean_number(closes.iloc[-1])
-    previous_close = clean_number(closes.iloc[-2] if len(closes) > 1 else closes.iloc[-1])
+    previous_close = clean_number(previous_session_closes.iloc[-1] if not previous_session_closes.empty else closes.iloc[-1])
 
     if latest_close is None or previous_close is None:
         return None
 
-    high = frame.get("High")
-    low = frame.get("Low")
-    latest_index = closes.index[-1]
-    latest_volume = None
-
-    if volume is not None and latest_index in volume.index:
-        latest_volume = clean_number(volume.loc[latest_index])
+    high = session_frame.get("High")
+    low = session_frame.get("Low")
+    volume = session_frame.get("Volume")
+    session_volume = clean_number(volume.dropna().sum()) if volume is not None and not volume.dropna().empty else None
 
     change = latest_close - previous_close
 
@@ -118,10 +143,10 @@ def build_quote(symbol, frame, updated_at):
         "previousClose": previous_close,
         "change": change,
         "changePercent": 0 if previous_close == 0 else (change / previous_close) * 100,
-        "dayHigh": clean_number(high.dropna().iloc[-1]) if high is not None and not high.dropna().empty else None,
-        "dayLow": clean_number(low.dropna().iloc[-1]) if low is not None and not low.dropna().empty else None,
-        "volume": latest_volume,
-        "updatedAt": latest_index.to_pydatetime().replace(tzinfo=timezone.utc).isoformat(),
+        "dayHigh": clean_number(high.dropna().max()) if high is not None and not high.dropna().empty else None,
+        "dayLow": clean_number(low.dropna().min()) if low is not None and not low.dropna().empty else None,
+        "volume": session_volume,
+        "updatedAt": timestamp_iso(latest_index),
     }
 
 
@@ -193,10 +218,20 @@ def main():
     universe = load_universe()
     symbols = [security["symbol"] for security in universe]
     tickers = " ".join(yahoo_symbol(symbol) for symbol in symbols)
-    history = yf.download(
+    daily_history = yf.download(
         tickers=tickers,
-        period="6mo",
-        interval="1d",
+        period=HISTORY_PERIOD,
+        interval=HISTORY_INTERVAL,
+        group_by="ticker",
+        auto_adjust=False,
+        actions=False,
+        threads=True,
+        progress=False,
+    )
+    quote_history = yf.download(
+        tickers=tickers,
+        period=QUOTE_PERIOD,
+        interval=QUOTE_INTERVAL,
         group_by="ticker",
         auto_adjust=False,
         actions=False,
@@ -208,12 +243,18 @@ def main():
     histories = {}
 
     for symbol in symbols:
-        frame = dataframe_for_symbol(history, yahoo_symbol(symbol))
-        if frame is None or frame.empty:
-            continue
+        quote_frame = dataframe_for_symbol(quote_history, yahoo_symbol(symbol))
+        history_frame = dataframe_for_symbol(daily_history, yahoo_symbol(symbol))
+        fallback_frame = history_frame if history_frame is not None and not history_frame.empty else quote_frame
 
-        quote = build_quote(symbol, frame, updated_at)
-        points = build_history(frame)
+        if quote_frame is not None and not quote_frame.empty:
+            quote = build_quote(symbol, quote_frame, updated_at)
+        elif fallback_frame is not None and not fallback_frame.empty:
+            quote = build_quote(symbol, fallback_frame, updated_at)
+        else:
+            quote = None
+
+        points = build_history(history_frame) if history_frame is not None and not history_frame.empty else []
 
         if quote:
             quotes.append(quote)
@@ -234,7 +275,7 @@ def main():
         "quotes": quotes,
         "histories": histories,
         "options": options,
-        "message": f"{len(quotes)} S&P 500 quote records and {len(histories)} price histories generated with yfinance.",
+        "message": f"{len(quotes)} S&P 500 intraday quote records and {len(histories)} price histories generated with yfinance.",
     }
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

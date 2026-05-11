@@ -72,7 +72,7 @@ export function TickerList({
         <div>
           <h2 className="text-xl font-semibold text-white">S&P 500 securities</h2>
           <p className="mt-1 text-sm text-[#919191]">
-            Showing all {visibleSecurities.length.toLocaleString()} matches. Prices load from the latest yfinance snapshot.
+            Showing all {visibleSecurities.length.toLocaleString()} matches. Prices refresh automatically from yfinance snapshots.
           </p>
         </div>
         <label className="flex h-10 min-w-[260px] items-center gap-2 rounded-lg bg-[#171717] px-3 text-sm text-[#919191]">
