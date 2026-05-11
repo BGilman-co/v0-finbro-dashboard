@@ -68,6 +68,11 @@ export function AuthForm({ mode }: AuthFormProps) {
         setMessage(body?.error ?? "Unable to create account.")
         return
       }
+
+      setIsSubmitting(false)
+      setPassword("")
+      setMessage("Account created. Check your email and verify your address before logging in.")
+      return
     }
 
     const authResponse = await supabase.auth.signInWithPassword({
@@ -78,7 +83,12 @@ export function AuthForm({ mode }: AuthFormProps) {
     setIsSubmitting(false)
 
     if (authResponse.error) {
-      setMessage(authResponse.error.message)
+      const errorMessage = authResponse.error.message.toLowerCase()
+      const message = errorMessage.includes("email not confirmed")
+        ? "Check your email and verify your address before logging in."
+        : "No matching verified account was found. Sign up first, or check your email and password."
+
+      setMessage(message)
       return
     }
 
@@ -95,7 +105,9 @@ export function AuthForm({ mode }: AuthFormProps) {
 
         <h1 className="text-2xl font-medium">{isSignup ? "Create account" : "Sign in"}</h1>
         <p className="mt-2 text-sm leading-6 text-[#919191]">
-          Use any email and a password with at least 4 characters.
+          {isSignup
+            ? "Create an account, then verify your email before signing in."
+            : "Use the email and password for your verified account."}
         </p>
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>

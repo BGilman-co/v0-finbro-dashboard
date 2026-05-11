@@ -13,7 +13,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Supabase Authentication
 
-Create a Supabase project and copy `.env.example` to `.env.local` with your public Supabase URL, anon key, and server-only service role key. The login and signup screens accept any email address and passwords with at least 4 characters.
+Create a Supabase project and copy `.env.example` to `.env.local` with your public Supabase URL, anon key, and server-only service role key. The login and signup screens accept any email address and passwords with at least 4 characters. New accounts must verify their email address before signing in.
 
 Hosted Supabase Auth requires its project-level minimum password length to be at least 6, so this app creates new users through a server route backed by the service role key and then signs them in with the normal browser Supabase client. Never expose `SUPABASE_SERVICE_ROLE_KEY` to client code.
 

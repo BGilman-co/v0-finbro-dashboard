@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { createSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase-admin"
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClient,
+  isSupabaseAdminConfigured,
+} from "@/lib/supabase-admin"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -23,18 +27,36 @@ export async function POST(request: Request) {
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
+  const supabaseServer = createSupabaseServerClient()
   const email = parsed.data.email.toLowerCase()
 
   const { error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: parsed.data.password,
-    email_confirm: true,
+    email_confirm: false,
     user_metadata: { email },
   })
 
   if (error) {
+    if (error.message.toLowerCase().includes("already")) {
+      return NextResponse.json({ error: "An account already exists for this email. Log in instead." }, { status: 409 })
+    }
+
     return NextResponse.json({ error: error.message }, { status: error.status ?? 400 })
   }
 
-  return NextResponse.json({ email }, { status: 201 })
+  const origin = new URL(request.url).origin
+  const { error: resendError } = await supabaseServer.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      emailRedirectTo: `${origin}/login`,
+    },
+  })
+
+  if (resendError) {
+    return NextResponse.json({ error: resendError.message }, { status: resendError.status ?? 400 })
+  }
+
+  return NextResponse.json({ email, requiresEmailVerification: true }, { status: 201 })
 }
