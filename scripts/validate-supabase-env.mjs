@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs"
 const requiredEnv = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
 ]
 
 function loadLocalEnvFile() {
@@ -67,18 +66,27 @@ for (const [name, value] of Object.entries(env)) {
 
 const projectRef = projectRefFromUrl(env.NEXT_PUBLIC_SUPABASE_URL)
 const anonPayload = decodeJwtPayload("NEXT_PUBLIC_SUPABASE_ANON_KEY", env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-const servicePayload = decodeJwtPayload("SUPABASE_SERVICE_ROLE_KEY", env.SUPABASE_SERVICE_ROLE_KEY)
 
 if (anonPayload.role !== "anon") {
   fail("NEXT_PUBLIC_SUPABASE_ANON_KEY must be the project's anon key.")
 }
 
-if (servicePayload.role !== "service_role") {
-  fail("SUPABASE_SERVICE_ROLE_KEY must be the project's service role key.")
+if (anonPayload.ref !== projectRef) {
+  fail("Supabase URL and anon key must come from the same Supabase project.")
 }
 
-if (anonPayload.ref !== projectRef || servicePayload.ref !== projectRef) {
-  fail("Supabase URL, anon key, and service role key must all come from the same Supabase project.")
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+
+if (serviceRoleKey) {
+  const servicePayload = decodeJwtPayload("SUPABASE_SERVICE_ROLE_KEY", serviceRoleKey)
+
+  if (servicePayload.role !== "service_role") {
+    fail("SUPABASE_SERVICE_ROLE_KEY must be the project's service role key.")
+  }
+
+  if (servicePayload.ref !== projectRef) {
+    fail("SUPABASE_SERVICE_ROLE_KEY must come from the same Supabase project as NEXT_PUBLIC_SUPABASE_URL.")
+  }
 }
 
 console.log(`[supabase-env] Supabase environment is valid for project ${projectRef}.`)
