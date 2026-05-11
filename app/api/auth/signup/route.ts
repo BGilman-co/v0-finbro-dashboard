@@ -30,6 +30,7 @@ export async function POST(request: Request) {
   const supabaseServer = createSupabaseServerClient()
   const email = parsed.data.email.toLowerCase()
   const origin = new URL(request.url).origin
+  const emailRedirectTo = `${origin}/auth/callback`
 
   const { error } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
         type: "signup",
         email,
         options: {
-          emailRedirectTo: `${origin}/login`,
+          emailRedirectTo,
         },
       })
 
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     type: "signup",
     email,
     options: {
-      emailRedirectTo: `${origin}/login`,
+      emailRedirectTo,
     },
   })
 

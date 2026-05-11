@@ -22,12 +22,13 @@ export async function POST(request: Request) {
   }
 
   const origin = new URL(request.url).origin
+  const emailRedirectTo = `${origin}/auth/callback`
   const supabaseServer = createSupabaseServerClient()
   const { error } = await supabaseServer.auth.resend({
     type: "signup",
     email: parsed.data.email.toLowerCase(),
     options: {
-      emailRedirectTo: `${origin}/login`,
+      emailRedirectTo,
     },
   })
 
