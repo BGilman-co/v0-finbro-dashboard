@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-client"
+import { validateSupabaseEnv } from "@/lib/supabase-env"
 
 type AuthFormProps = {
   mode: "login" | "signup"
@@ -44,7 +45,11 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
 
     if (!isSupabaseConfigured()) {
-      setMessage("Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to connect Supabase.")
+      const validation = validateSupabaseEnv({
+        url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      })
+      setMessage(validation.ok ? "Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to connect Supabase." : validation.error)
       return
     }
 
@@ -98,7 +103,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     if (authResponse.error) {
       const errorMessage = authResponse.error.message.toLowerCase()
       const message = errorMessage.includes("invalid api key")
-        ? "Supabase auth is misconfigured for this environment. Check the public Supabase URL and anon key."
+        ? "Supabase auth is misconfigured for this environment. Make sure the public Supabase URL and anon key belong to the same project."
         : errorMessage.includes("email not confirmed")
           ? "Check your email and verify your address before logging in."
           : "No matching verified account was found. Sign up first, or check your email and password."

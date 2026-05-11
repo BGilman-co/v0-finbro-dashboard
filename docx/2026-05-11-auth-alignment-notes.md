@@ -6,6 +6,7 @@ Date: 2026-05-11
 
 - Replaced the custom admin-user signup path with Supabase's native `auth.signUp()` flow.
 - Removed the browser client's placeholder Supabase credentials so missing config fails clearly instead of producing misleading auth errors.
+- Added runtime validation that checks whether the Supabase URL and keys belong to the same project ref before creating clients.
 - Matched the app password minimum to Supabase hosted Auth's default minimum of 6 characters.
 - Expanded local auth redirect URLs in `supabase/config.toml` to cover both `localhost` and `127.0.0.1`.
 
@@ -33,3 +34,4 @@ Date: 2026-05-11
 ## Next Steps
 
 - If the deployed app still shows `Invalid API key`, confirm the Vercel environment values exactly match the current Supabase project's public URL and anon key, then redeploy so the client bundle is rebuilt with the live public vars.
+- If the message says the URL and key belong to different projects, copy all three values from the same Supabase project: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
