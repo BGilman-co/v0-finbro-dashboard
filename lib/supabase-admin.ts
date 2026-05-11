@@ -13,6 +13,16 @@ export function isSupabaseAdminConfigured() {
   return validateSupabaseEnv({ url: supabaseUrl, anonKey: supabaseAnonKey, serviceRoleKey: supabaseServiceRoleKey }).ok
 }
 
+export function getSupabaseAdminConfigError() {
+  const validation = validateSupabaseEnv({
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
+    serviceRoleKey: supabaseServiceRoleKey,
+  })
+
+  return validation.ok ? null : validation.error
+}
+
 export function createSupabaseAdminClient() {
   const validation = validateSupabaseEnv({
     url: supabaseUrl,

@@ -4,6 +4,7 @@ import { z } from "zod"
 import {
   createSupabaseAdminClient,
   createSupabaseServerClient,
+  getSupabaseAdminConfigError,
   isSupabaseAdminConfigured,
 } from "@/lib/supabase-admin"
 
@@ -23,7 +24,10 @@ export async function POST(request: Request) {
   }
 
   if (!isSupabaseAdminConfigured()) {
-    return NextResponse.json({ error: "Supabase signup is not configured on the server." }, { status: 500 })
+    return NextResponse.json(
+      { error: getSupabaseAdminConfigError() ?? "Supabase signup is not configured on the server." },
+      { status: 500 },
+    )
   }
 
   const supabaseAdmin = createSupabaseAdminClient()
