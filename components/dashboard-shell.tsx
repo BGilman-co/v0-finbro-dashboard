@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { TickerList, type SortKey } from "@/components/ticker-list"
 import { Sidebar, type NavItem } from "@/components/sidebar"
 import { Header } from "@/components/header"
@@ -8,6 +9,7 @@ import { MarketIntelligence } from "@/components/market-intelligence"
 import { NetflixValuationResearch } from "@/components/netflix-valuation-research"
 import { PerformanceChart } from "@/components/performance-chart"
 import { holdings } from "@/lib/portfolio-data"
+import { isSupabaseConfigured, supabase } from "@/lib/supabase-client"
 import { loadFilings, loadMarketData, loadSp500Universe, type UniversePayload } from "@/lib/static-market-data"
 import type { FilingsPayload, MarketPayload, Security } from "@/lib/market-types"
 
@@ -78,6 +80,7 @@ function MobileNav({ activeView, onNavigate }: { activeView: NavItem; onNavigate
 }
 
 export function DashboardShell() {
+  const router = useRouter()
   const [activeView, setActiveView] = useState<NavItem>("dashboard")
   const [selectedSymbol, setSelectedSymbol] = useState("AAPL")
   const [search, setSearch] = useState("")
@@ -86,6 +89,7 @@ export function DashboardShell() {
   const [universe, setUniverse] = useState<UniversePayload | null>(null)
   const [marketData, setMarketData] = useState<MarketPayload | null>(null)
   const [filingsData, setFilingsData] = useState<FilingsPayload | null>(null)
+  const [isAuthChecking, setIsAuthChecking] = useState(true)
   const [isMarketLoading, setIsMarketLoading] = useState(true)
 
   const securities = useMemo(
@@ -104,6 +108,42 @@ export function DashboardShell() {
   const quoteSymbols = useMemo(() => {
     return securities.map((security) => security.symbol)
   }, [securities])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      router.replace("/login")
+      return
+    }
+
+    let isMounted = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) {
+        return
+      }
+
+      if (!data.session) {
+        router.replace("/login")
+        return
+      }
+
+      setIsAuthChecking(false)
+    })
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        router.replace("/login")
+        return
+      }
+
+      setIsAuthChecking(false)
+    })
+
+    return () => {
+      isMounted = false
+      authListener.subscription.unsubscribe()
+    }
+  }, [router])
 
   useEffect(() => {
     const hash = window.location.hash.replace("#", "") as NavItem
@@ -189,11 +229,24 @@ export function DashboardShell() {
     window.alert(`${feature} is connected to the market data and SEC source workflow.`)
   }
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.replace("/login")
+  }
+
+  if (isAuthChecking) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-black text-sm text-[#919191]">
+        Checking access...
+      </div>
+    )
+  }
+
   return (
     <div className="relative h-screen w-full overflow-hidden bg-black text-white">
       <Header
         onSettings={() => notifyUnavailable("Settings")}
-        onLogout={() => notifyUnavailable("Sources")}
+        onLogout={handleLogout}
       />
 
       <div className="h-full overflow-y-auto no-scrollbar">

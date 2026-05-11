@@ -13,9 +13,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Supabase Authentication
 
-Create a Supabase project and copy `.env.example` to `.env.local` with your public Supabase URL and anon key. The login and signup screens use user `bg` and password `8080`; the app maps that user to the Supabase email identity `bg@users.bgilman.co`.
+Create a Supabase project and copy `.env.example` to `.env.local` with your public Supabase URL, anon key, and server-only service role key. The login and signup screens accept any email address and passwords with at least 4 characters.
 
-If Supabase rejects `8080`, lower the project password minimum in Supabase Auth settings or choose a longer password before creating the user.
+Hosted Supabase Auth requires its project-level minimum password length to be at least 6, so this app creates new users through a server route backed by the service role key and then signs them in with the normal browser Supabase client. Never expose `SUPABASE_SERVICE_ROLE_KEY` to client code.
 
 ## Vercel Deployment
 
