@@ -9,6 +9,13 @@ export type Security = {
   cik?: string
 }
 
+export type UniversePayload = {
+  securities: Security[]
+  count: number
+  provider: string
+  updatedAt: string
+}
+
 export type MarketQuote = {
   symbol: string
   price: number

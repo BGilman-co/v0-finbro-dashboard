@@ -160,7 +160,7 @@ export function DashboardShell() {
     let isMounted = true
 
     async function refreshFilings() {
-      const payload = await loadFilings(selectedSymbol, securities)
+      const payload = await loadFilings(selectedSymbol)
 
       if (isMounted) {
         setFilingsData(payload)
