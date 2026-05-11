@@ -63,7 +63,10 @@ export function validateSupabaseEnv(config: SupabaseEnvConfig) {
     } catch (error) {
       return {
         ok: false as const,
-        error: error instanceof Error ? error.message : "NEXT_PUBLIC_SUPABASE_ANON_KEY is invalid.",
+        error:
+          error instanceof Error
+            ? `NEXT_PUBLIC_SUPABASE_ANON_KEY is invalid: ${error.message}`
+            : "NEXT_PUBLIC_SUPABASE_ANON_KEY is invalid.",
       }
     }
   }
@@ -85,7 +88,10 @@ export function validateSupabaseEnv(config: SupabaseEnvConfig) {
     } catch (error) {
       return {
         ok: false as const,
-        error: error instanceof Error ? error.message : "SUPABASE_SERVICE_ROLE_KEY is invalid.",
+        error:
+          error instanceof Error
+            ? `SUPABASE_SERVICE_ROLE_KEY is invalid: ${error.message}`
+            : "SUPABASE_SERVICE_ROLE_KEY is invalid.",
       }
     }
   }

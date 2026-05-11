@@ -21,7 +21,7 @@ This app creates new users through a server route backed by the service role key
 
 If you see `Invalid API key`, the most common cause is that `NEXT_PUBLIC_SUPABASE_URL` points to one Supabase project while `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `SUPABASE_SERVICE_ROLE_KEY` came from another. These values must all belong to the same project ref.
 
-Vercel must have real values for `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` so browser login can work. Signup and verification email delivery also require `SUPABASE_SERVICE_ROLE_KEY` at runtime.
+Vercel should have real values for `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`; the browser client also includes the current public Supabase anon key as a fallback so login keeps working if Vercel is accidentally left on a placeholder value. Signup and verification email delivery still require `SUPABASE_SERVICE_ROLE_KEY` at runtime.
 
 ## Vercel Deployment
 
