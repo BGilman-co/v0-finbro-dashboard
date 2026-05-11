@@ -1,6 +1,7 @@
 # Supabase
 .branches
 .temp
+dumps
 
 # dotenvx
 .env.keys
