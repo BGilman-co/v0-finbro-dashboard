@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { FormEvent } from "react"
 import { useState } from "react"
-import { LockKeyhole, LogIn, UserPlus } from "lucide-react"
+import { LockKeyhole, LogIn, MailCheck, Send, UserPlus } from "lucide-react"
 import { z } from "zod"
 
 import { Button } from "@/components/ui/button"
@@ -26,12 +26,15 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [message, setMessage] = useState<string | null>(null)
+  const [needsVerification, setNeedsVerification] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isResending, setIsResending] = useState(false)
   const isSignup = mode === "signup"
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setMessage(null)
+    setNeedsVerification(false)
 
     const parsed = authSchema.safeParse({ email, password })
 
@@ -61,7 +64,11 @@ export function AuthForm({ mode }: AuthFormProps) {
         }),
       })
 
-      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      const body = (await response.json().catch(() => null)) as {
+        error?: string
+        verificationEmailSent?: boolean
+        warning?: string
+      } | null
 
       if (!response.ok) {
         setIsSubmitting(false)
@@ -71,7 +78,12 @@ export function AuthForm({ mode }: AuthFormProps) {
 
       setIsSubmitting(false)
       setPassword("")
-      setMessage("Account created. Check your email and verify your address before logging in.")
+      setNeedsVerification(true)
+      setMessage(
+        body?.verificationEmailSent
+          ? "Verification email sent. Open it to verify your account, then log in."
+          : `Account created, but the verification email was not sent yet: ${body?.warning ?? "try sending it again."}`,
+      )
       return
     }
 
@@ -88,12 +100,47 @@ export function AuthForm({ mode }: AuthFormProps) {
         ? "Check your email and verify your address before logging in."
         : "No matching verified account was found. Sign up first, or check your email and password."
 
+      setNeedsVerification(errorMessage.includes("email not confirmed"))
       setMessage(message)
       return
     }
 
     router.replace("/")
     router.refresh()
+  }
+
+  async function handleResendVerification() {
+    const parsed = z.string().trim().email("Enter a valid email address.").safeParse(email)
+
+    if (!parsed.success) {
+      setMessage(parsed.error.issues[0]?.message ?? "Enter a valid email address.")
+      return
+    }
+
+    setIsResending(true)
+    setMessage(null)
+
+    const response = await fetch("/api/auth/resend-verification", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: parsed.data.trim().toLowerCase(),
+      }),
+    })
+    const body = (await response.json().catch(() => null)) as { error?: string } | null
+
+    setIsResending(false)
+
+    if (!response.ok) {
+      setNeedsVerification(true)
+      setMessage(body?.error ?? "Unable to send verification email. Try again shortly.")
+      return
+    }
+
+    setNeedsVerification(true)
+    setMessage("Verification email sent. Open it to verify your account, then log in.")
   }
 
   return (
@@ -144,6 +191,25 @@ export function AuthForm({ mode }: AuthFormProps) {
             <p className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm leading-5 text-[#E7E7E7]">
               {message}
             </p>
+          ) : null}
+
+          {needsVerification ? (
+            <div className="rounded-lg border border-[#86efac]/30 bg-[#86efac]/10 p-3">
+              <div className="flex items-start gap-3 text-sm leading-5 text-[#E7E7E7]">
+                <MailCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#86efac]" />
+                <p>Verify your email before logging in. If it did not arrive, send the verification email again.</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isResending}
+                onClick={handleResendVerification}
+                className="mt-3 h-10 w-full border-white/10 bg-black/40 text-white hover:bg-[#1F1F1F] hover:text-white"
+              >
+                <Send className="h-4 w-4" />
+                {isResending ? "Sending..." : "Send verification email"}
+              </Button>
+            </div>
           ) : null}
 
           <Button

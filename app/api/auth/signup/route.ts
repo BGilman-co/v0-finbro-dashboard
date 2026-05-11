@@ -29,6 +29,7 @@ export async function POST(request: Request) {
   const supabaseAdmin = createSupabaseAdminClient()
   const supabaseServer = createSupabaseServerClient()
   const email = parsed.data.email.toLowerCase()
+  const origin = new URL(request.url).origin
 
   const { error } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -39,13 +40,32 @@ export async function POST(request: Request) {
 
   if (error) {
     if (error.message.toLowerCase().includes("already")) {
-      return NextResponse.json({ error: "An account already exists for this email. Log in instead." }, { status: 409 })
+      const { error: resendExistingError } = await supabaseServer.auth.resend({
+        type: "signup",
+        email,
+        options: {
+          emailRedirectTo: `${origin}/login`,
+        },
+      })
+
+      if (resendExistingError) {
+        return NextResponse.json(
+          {
+            email,
+            requiresEmailVerification: true,
+            verificationEmailSent: false,
+            warning: resendExistingError.message,
+          },
+          { status: 202 },
+        )
+      }
+
+      return NextResponse.json({ email, requiresEmailVerification: true, verificationEmailSent: true }, { status: 202 })
     }
 
     return NextResponse.json({ error: error.message }, { status: error.status ?? 400 })
   }
 
-  const origin = new URL(request.url).origin
   const { error: resendError } = await supabaseServer.auth.resend({
     type: "signup",
     email,
@@ -55,8 +75,16 @@ export async function POST(request: Request) {
   })
 
   if (resendError) {
-    return NextResponse.json({ error: resendError.message }, { status: resendError.status ?? 400 })
+    return NextResponse.json(
+      {
+        email,
+        requiresEmailVerification: true,
+        verificationEmailSent: false,
+        warning: resendError.message,
+      },
+      { status: 202 },
+    )
   }
 
-  return NextResponse.json({ email, requiresEmailVerification: true }, { status: 201 })
+  return NextResponse.json({ email, requiresEmailVerification: true, verificationEmailSent: true }, { status: 201 })
 }

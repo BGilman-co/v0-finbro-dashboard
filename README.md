@@ -19,7 +19,7 @@ Hosted Supabase Auth requires its project-level minimum password length to be at
 
 ## Vercel Deployment
 
-Vercel should use the default Next.js framework preset with `pnpm install --frozen-lockfile` and `pnpm build`. The app uses dynamic route handlers under `app/api/` for market data, price history, S&P 500 universe data, and SEC filings, so it should be deployed as a normal Vercel Next.js app rather than a static export.
+Vercel is the only deployment target for this app. Use the default Next.js framework preset with `pnpm install --frozen-lockfile` and `pnpm build`. The app uses dynamic route handlers under `app/api/` for market data, price history, S&P 500 universe data, SEC filings, and authentication, so it should be deployed as a normal Vercel Next.js app rather than a static export or GitHub Pages site.
 
 Market data can come from Vercel environment variables or from the packaged fallback snapshots:
 
