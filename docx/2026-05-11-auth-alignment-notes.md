@@ -14,7 +14,7 @@ Date: 2026-05-11
 
 - The browser client used placeholder URL and API key fallbacks, which could surface as `Invalid API key` instead of clearly reporting missing environment configuration.
 - The production Vercel deployment was inspected and found to be built with a placeholder public anon key, which explains the repeated `Invalid API key` message on the live login page.
-- Added a build-time Supabase environment check so Vercel fails fast when public auth keys are missing, placeholders, malformed, or from a different Supabase project.
+- Removed the build-time Supabase environment gate from `pnpm build` after it blocked Vercel deployments; auth configuration is checked at runtime instead.
 
 ## Dashboard Settings To Confirm
 
