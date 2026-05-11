@@ -8,7 +8,7 @@
     "data:netflix": "python3 scripts/build_netflix_valuation.py",
     "data:sec": "python3 scripts/fetch_sec_data.py",
     "data:yfinance": "python3 scripts/fetch_yfinance_data.py",
-    "dev": "next dev",
+    "dev": "PATH=\"$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH\" next dev",
     "lint": "eslint .",
     "start": "next start"
   },
