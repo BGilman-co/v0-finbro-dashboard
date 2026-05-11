@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { createSupabaseServerClient, isSupabaseAdminConfigured } from "@/lib/supabase-admin"
+import { createSupabaseServerClient, isSupabasePublicConfigured } from "@/lib/supabase-admin"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 })
   }
 
-  if (!isSupabaseAdminConfigured()) {
+  if (!isSupabasePublicConfigured()) {
     return NextResponse.json({ error: "Supabase email verification is not configured." }, { status: 500 })
   }
 

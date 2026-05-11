@@ -9,7 +9,7 @@ import { MarketIntelligence } from "@/components/market-intelligence"
 import { NetflixValuationResearch } from "@/components/netflix-valuation-research"
 import { PerformanceChart } from "@/components/performance-chart"
 import { holdings } from "@/lib/portfolio-data"
-import { isSupabaseConfigured, supabase } from "@/lib/supabase-client"
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-client"
 import { loadFilings, loadMarketData, loadSp500Universe, type UniversePayload } from "@/lib/static-market-data"
 import type { FilingsPayload, MarketPayload, Security } from "@/lib/market-types"
 
@@ -115,6 +115,7 @@ export function DashboardShell() {
       return
     }
 
+    const supabase = getSupabaseBrowserClient()
     let isMounted = true
 
     supabase.auth.getSession().then(({ data }) => {
@@ -230,6 +231,7 @@ export function DashboardShell() {
   }
 
   const handleLogout = async () => {
+    const supabase = getSupabaseBrowserClient()
     await supabase.auth.signOut()
     router.replace("/login")
   }

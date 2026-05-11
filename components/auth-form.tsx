@@ -10,7 +10,7 @@ import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { isSupabaseConfigured, supabase } from "@/lib/supabase-client"
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-client"
 
 type AuthFormProps = {
   mode: "login" | "signup"
@@ -18,7 +18,7 @@ type AuthFormProps = {
 
 const authSchema = z.object({
   email: z.string().trim().email("Enter a valid email address."),
-  password: z.string().min(4, "Password must be at least 4 characters."),
+  password: z.string().min(6, "Password must be at least 6 characters."),
 })
 
 export function AuthForm({ mode }: AuthFormProps) {
@@ -51,6 +51,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     setIsSubmitting(true)
 
     const normalizedEmail = parsed.data.email.trim().toLowerCase()
+    const supabase = getSupabaseBrowserClient()
 
     if (isSignup) {
       const response = await fetch("/api/auth/signup", {
@@ -96,9 +97,11 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     if (authResponse.error) {
       const errorMessage = authResponse.error.message.toLowerCase()
-      const message = errorMessage.includes("email not confirmed")
-        ? "Check your email and verify your address before logging in."
-        : "No matching verified account was found. Sign up first, or check your email and password."
+      const message = errorMessage.includes("invalid api key")
+        ? "Supabase auth is misconfigured for this environment. Check the public Supabase URL and anon key."
+        : errorMessage.includes("email not confirmed")
+          ? "Check your email and verify your address before logging in."
+          : "No matching verified account was found. Sign up first, or check your email and password."
 
       setNeedsVerification(errorMessage.includes("email not confirmed"))
       setMessage(message)
@@ -153,7 +156,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         <h1 className="text-2xl font-medium">{isSignup ? "Create account" : "Sign in"}</h1>
         <p className="mt-2 text-sm leading-6 text-[#919191]">
           {isSignup
-            ? "Create an account, then verify your email before signing in."
+            ? "Create an account with a password of at least 6 characters, then verify your email before signing in."
             : "Use the email and password for your verified account."}
         </p>
 

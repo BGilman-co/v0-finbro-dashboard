@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { LoaderCircle, MailCheck } from "lucide-react"
 import type { EmailOtpType } from "@supabase/supabase-js"
 
-import { isSupabaseConfigured, supabase } from "@/lib/supabase-client"
+import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-client"
 
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -19,6 +19,8 @@ export default function AuthCallbackPage() {
         setMessage("Supabase is not configured for this site.")
         return
       }
+
+      const supabase = getSupabaseBrowserClient()
 
       const params = new URLSearchParams(window.location.search)
       const code = params.get("code")
