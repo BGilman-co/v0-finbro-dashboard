@@ -21,6 +21,8 @@ This app creates new users through a server route backed by the service role key
 
 If you see `Invalid API key`, the most common cause is that `NEXT_PUBLIC_SUPABASE_URL` points to one Supabase project while `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `SUPABASE_SERVICE_ROLE_KEY` came from another. These values must all belong to the same project ref.
 
+Production builds validate the Supabase environment before compiling. Vercel must have real values for `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`; placeholder values such as `your_anon_key` will fail the build instead of publishing a broken login page.
+
 ## Vercel Deployment
 
 Vercel is the only deployment target for this app. Use the default Next.js framework preset with `pnpm install --frozen-lockfile` and `pnpm build`. The app uses dynamic route handlers under `app/api/` for market data, price history, S&P 500 universe data, SEC filings, and authentication, so it should be deployed as a normal Vercel Next.js app rather than a static export or GitHub Pages site.

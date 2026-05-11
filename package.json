@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "build": "next build",
+    "build": "node scripts/validate-supabase-env.mjs && next build",
     "data:netflix": "python3 scripts/build_netflix_valuation.py",
     "data:sec": "python3 scripts/fetch_sec_data.py",
     "data:yfinance": "python3 scripts/fetch_yfinance_data.py",
