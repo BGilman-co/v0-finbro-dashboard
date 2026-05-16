@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { CalendarClock, Download, FileKey2, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
-import { buildPreviewModel, type FinancialStatement, type ForecastCellNote } from "@/lib/cash-flow-model"
+import { buildPreviewModel, type FinancialStatement, type ForecastAssumption, type ForecastCellNote, type ScenarioName } from "@/lib/cash-flow-model"
 import { loadEarningsStatus } from "@/lib/static-market-data"
 import type { FinnhubEarningsPayload } from "@/lib/finnhub-data"
 import type { Security } from "@/lib/market-types"
@@ -13,9 +13,43 @@ type CashFlowModelerProps = {
   onSymbolChange: (symbol: string) => void
 }
 
+type ActiveNote = {
+  rowLabel: string
+  year: number
+  note: ForecastCellNote
+}
+
 function formatAmount(value: number, rowId: string) {
+  if (!Number.isFinite(value)) {
+    return ""
+  }
+
   if (rowId.startsWith("assumption-")) {
+    if (value === 0) {
+      return ""
+    }
+
     return `${value.toFixed(1)}%`
+  }
+
+  if (rowId === "diluted-eps") {
+    return value.toFixed(2)
+  }
+
+  if (rowId.includes("diluted-eps")) {
+    return value.toFixed(2)
+  }
+
+  if (rowId === "diluted-shares") {
+    return value.toFixed(1)
+  }
+
+  if (rowId.includes("variance")) {
+    return `${value.toFixed(1)}%`
+  }
+
+  if (rowId.includes("check")) {
+    return value.toFixed(1)
   }
 
   return new Intl.NumberFormat("en-US", {
@@ -37,7 +71,13 @@ function noteText(note?: ForecastCellNote) {
   ].join("\n")
 }
 
-function StatementTable({ statement }: { statement: FinancialStatement }) {
+function StatementTable({
+  statement,
+  onOpenNote,
+}: {
+  statement: FinancialStatement
+  onOpenNote: (note: ActiveNote) => void
+}) {
   return (
     <section className="overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#0D0D0D]">
       <div className="border-b border-[#1F1F1F] px-5 py-4">
@@ -64,8 +104,15 @@ function StatementTable({ statement }: { statement: FinancialStatement }) {
           </thead>
           <tbody>
             {statement.lineItems.map((row) => {
-              const isTotal = ["gross-profit", "operating-income", "net-income", "operating-cash-flow", "cash-change"].includes(row.id)
+              const isTotal = ["gross-profit", "operating-income", "pretax-income", "net-income", "operating-cash-flow", "free-cash-flow", "investing-cash-flow", "financing-cash-flow", "net-change-cash", "ending-cash"].includes(row.id)
               const isAssumption = row.id.startsWith("assumption-")
+              const hasProjectedError = row.projected.some((value) => {
+                if (!Number.isFinite(value)) {
+                  return false
+                }
+
+                return row.id.includes("variance") ? Math.abs(value) > 10 : row.id.includes("check") && Math.abs(value) > 0.1
+              })
 
               return (
                 <tr key={row.id} className={`border-t border-[#1F1F1F] ${isTotal ? "bg-[#121612]" : ""}`}>
@@ -74,7 +121,7 @@ function StatementTable({ statement }: { statement: FinancialStatement }) {
                   </th>
                   {statement.years.map((year, index) => (
                     <td key={year} className="px-3 py-3 text-right tabular-nums text-[#C9C9C9]">
-                      {row.historical[index] === undefined ? "" : formatAmount(row.historical[index], row.id)}
+                      {row.historical[index] === undefined || !Number.isFinite(row.historical[index]) ? "" : formatAmount(row.historical[index], row.id)}
                     </td>
                   ))}
                   {statement.projectedYears.map((year, index) => (
@@ -83,11 +130,11 @@ function StatementTable({ statement }: { statement: FinancialStatement }) {
                         type="button"
                         title={noteText(row.notes?.[index])}
                         aria-label={`${row.label} ${year} projection note`}
-                        className="w-full rounded-md px-2 py-1 text-right tabular-nums text-[#F2F2F2] outline-none transition-colors hover:bg-[#253017] focus-visible:bg-[#253017] focus-visible:ring-2 focus-visible:ring-[#D9F99D]"
+                        className={`w-full rounded-md px-2 py-1 text-right tabular-nums outline-none transition-colors hover:bg-[#253017] focus-visible:bg-[#253017] focus-visible:ring-2 focus-visible:ring-[#D9F99D] ${hasProjectedError ? "text-[#FCA5A5]" : "text-[#F2F2F2]"}`}
                         onClick={() => {
-                          const text = noteText(row.notes?.[index])
-                          if (text) {
-                            window.alert(text)
+                          const note = row.notes?.[index]
+                          if (note) {
+                            onOpenNote({ rowLabel: row.label, year, note })
                           }
                         }}
                       >
@@ -99,6 +146,99 @@ function StatementTable({ statement }: { statement: FinancialStatement }) {
                 </tr>
               )
             })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function NoteDialog({ activeNote, onClose }: { activeNote: ActiveNote | null; onClose: () => void }) {
+  if (!activeNote) {
+    return null
+  }
+
+  const sections = [
+    { label: "Assumption", value: activeNote.note.assumption },
+    { label: "Historical support", value: activeNote.note.historicalSupport },
+    { label: "SEC filing evidence", value: activeNote.note.secEvidence },
+    { label: "Finnhub transcript evidence", value: activeNote.note.transcriptEvidence },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 py-6 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="forecast-note-title">
+      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[#2A2A2A] bg-[#0D0D0D] shadow-2xl">
+        <div className="border-b border-[#1F1F1F] px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-[#D9F99D]">{activeNote.year} projection note</p>
+              <h2 id="forecast-note-title" className="mt-1 text-lg font-semibold text-white">
+                {activeNote.rowLabel}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-[#2A2A2A] px-3 py-1.5 text-sm text-[#C9C9C9] transition-colors hover:bg-[#171717] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9F99D]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+          <div className="mb-4 inline-flex rounded-md bg-[#171717] px-3 py-1.5 text-xs text-[#A7A7A7]">
+            Confidence: <span className="ml-1 text-[#E7E7E7]">{activeNote.note.confidence}</span>
+          </div>
+          <div className="grid gap-3">
+            {sections.map((section) => (
+              <section key={section.label} className="rounded-xl border border-[#1F1F1F] bg-black/30 p-4">
+                <h3 className="text-xs font-medium uppercase tracking-wide text-[#919191]">{section.label}</h3>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#E7E7E7]">{section.value}</p>
+              </section>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AssumptionsTable({ assumptions }: { assumptions: ForecastAssumption[] }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#0D0D0D]">
+      <div className="border-b border-[#1F1F1F] px-5 py-4">
+        <h2 className="text-base font-medium text-white">Assumptions</h2>
+        <p className="mt-1 text-xs text-[#919191]">Each forecast driver is tied to a source document, disclosure summary, modeled assumption, affected line item, and projection period.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1100px] border-collapse text-sm">
+          <thead>
+            <tr className="bg-[#111111] text-left text-xs uppercase tracking-wide text-[#919191]">
+              <th className="w-48 px-4 py-3 font-medium">Driver</th>
+              <th className="w-56 px-4 py-3 font-medium">Source</th>
+              <th className="px-4 py-3 font-medium">Disclosure</th>
+              <th className="px-4 py-3 font-medium">Assumption used</th>
+              <th className="w-48 px-4 py-3 font-medium">Line item</th>
+              <th className="w-36 px-4 py-3 font-medium">Period</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assumptions.map((assumption) => (
+              <tr key={assumption.id} className="border-t border-[#1F1F1F]">
+                <th className="px-4 py-3 text-left align-top font-medium text-white">{assumption.label}</th>
+                <td className="px-4 py-3 align-top text-xs leading-5 text-[#A7A7A7]">
+                  <a href={assumption.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#D9F99D] hover:text-white">
+                    {assumption.sourceDocument}
+                    <SquareArrowOutUpRight className="h-3 w-3" />
+                  </a>
+                  <div className="mt-1 text-[#919191]">Confidence: {assumption.confidence}</div>
+                </td>
+                <td className="px-4 py-3 align-top text-xs leading-5 text-[#C9C9C9]">{assumption.disclosure}</td>
+                <td className="px-4 py-3 align-top text-xs leading-5 text-[#C9C9C9]">{assumption.assumptionUsed}</td>
+                <td className="px-4 py-3 align-top text-xs leading-5 text-[#C9C9C9]">{assumption.affectedLineItem}</td>
+                <td className="px-4 py-3 align-top text-xs leading-5 text-[#C9C9C9]">{assumption.projectionPeriod}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -120,8 +260,8 @@ function statementToCsv(statement: FinancialStatement) {
   const headers = ["Line item", ...statement.years.map((year) => `${year}A`), ...statement.projectedYears.map((year) => `${year}E`), "Formula"]
   const rows = statement.lineItems.map((row) => [
     row.label,
-    ...statement.years.map((_, index) => row.historical[index] ?? ""),
-    ...statement.projectedYears.map((_, index) => row.projected[index] ?? ""),
+    ...statement.years.map((_, index) => (Number.isFinite(row.historical[index]) ? row.historical[index] : "")),
+    ...statement.projectedYears.map((_, index) => (Number.isFinite(row.projected[index]) ? row.projected[index] : "")),
     row.formula ?? "",
   ])
 
@@ -142,6 +282,8 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([selectedSymbol])
   const [earningsStatus, setEarningsStatus] = useState<FinnhubEarningsPayload | null>(null)
   const [isCheckingEarnings, setIsCheckingEarnings] = useState(false)
+  const [selectedScenario, setSelectedScenario] = useState<ScenarioName>("base")
+  const [activeNote, setActiveNote] = useState<ActiveNote | null>(null)
 
   const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol) ?? securities[0]
   const model = useMemo(
@@ -150,8 +292,8 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
         ticker: selectedSecurity?.symbol ?? "AAPL",
         name: selectedSecurity?.name ?? "Apple Inc.",
         cik: selectedSecurity?.cik,
-      }),
-    [selectedSecurity],
+      }, selectedScenario),
+    [selectedScenario, selectedSecurity],
   )
   const filteredSecurities = securities
     .filter((security) => `${security.symbol} ${security.name}`.toLowerCase().includes(tickerQuery.toLowerCase()))
@@ -204,12 +346,19 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
       "",
       model.cashFlowStatement.title,
       statementToCsv(model.cashFlowStatement),
+      "",
+      model.conventionalProjectionStatement.title,
+      statementToCsv(model.conventionalProjectionStatement),
+      "",
+      model.validationStatement.title,
+      statementToCsv(model.validationStatement),
     ].join("\n")
     const notes = {
       company: selectedSecurity,
       selectedSymbols,
       assumptions: model.assumptions,
-      projectedCellNotes: [...model.incomeStatement.lineItems, ...model.cashFlowStatement.lineItems].flatMap((row) =>
+      scenario: model.selectedScenario,
+      projectedCellNotes: [...model.incomeStatement.lineItems, ...model.cashFlowStatement.lineItems, ...model.conventionalProjectionStatement.lineItems].flatMap((row) =>
         (row.notes ?? []).map((note) => ({ row: row.label, ...note })),
       ),
     }
@@ -226,7 +375,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
             <p className="text-xs font-medium uppercase tracking-wide text-[#D9F99D]">SEC EDGAR + Finnhub forecast model</p>
             <h1 className="mt-2 text-2xl font-semibold text-white">5-year cash flow projection builder</h1>
             <p className="mt-3 text-sm leading-6 text-[#A7A7A7]">
-              Select one ticker or the full stock universe, then build a normalized filing-and-transcript-backed model. Finnhub and SEC request credentials are read from local environment variables, so secrets never need to be typed into the website.
+              Select one ticker or the full stock universe, then build a normalized filing-and-transcript-backed model. Forecasts use linked formulas, source-backed assumptions, and validation checks across the income statement and cash flow statement.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -238,6 +387,27 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
               <Download className="h-4 w-4" />
               Export CSV + notes
             </button>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-[#1F1F1F] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-sm font-medium text-[#E7E7E7]">Scenario</div>
+              <p className="mt-1 text-xs leading-5 text-[#A7A7A7]">Revenue, margin, cash conversion, capex, tax, buybacks, and share count flow through the full model.</p>
+            </div>
+            <div className="inline-flex rounded-lg border border-[#2A2A2A] bg-black p-1">
+              {model.scenarios.map((scenario) => (
+                <button
+                  key={scenario.name}
+                  type="button"
+                  onClick={() => setSelectedScenario(scenario.name)}
+                  className={`h-9 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9F99D] ${selectedScenario === scenario.name ? "bg-[#D9F99D] text-black" : "text-[#C9C9C9] hover:bg-[#171717]"}`}
+                >
+                  {scenario.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -355,13 +525,17 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
           <p className="mt-3 text-xs leading-5 text-[#A7A7A7]">
             {earningsStatus?.provider === "Unavailable"
               ? earningsStatus.message
-              : earningsStatus?.refreshReason ?? "Add FINNHUB_API_KEY to .env.local to enable the calendar watch."}
+              : earningsStatus?.refreshReason ?? "Calendar watch is initializing."}
           </p>
         </div>
       </section>
 
-      <StatementTable statement={model.incomeStatement} />
-      <StatementTable statement={model.cashFlowStatement} />
+      <AssumptionsTable assumptions={model.assumptions} />
+      <StatementTable statement={model.incomeStatement} onOpenNote={setActiveNote} />
+      <StatementTable statement={model.cashFlowStatement} onOpenNote={setActiveNote} />
+      <StatementTable statement={model.conventionalProjectionStatement} onOpenNote={setActiveNote} />
+      <StatementTable statement={model.validationStatement} onOpenNote={setActiveNote} />
+      <NoteDialog activeNote={activeNote} onClose={() => setActiveNote(null)} />
     </div>
   )
 }

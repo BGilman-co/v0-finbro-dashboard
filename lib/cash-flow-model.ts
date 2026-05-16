@@ -136,6 +136,7 @@ type ModelResult = {
   incomeStatement: FinancialStatement
   cashFlowStatement: FinancialStatement
   validationStatement: FinancialStatement
+  conventionalProjectionStatement: FinancialStatement
   selectedScenario: ForecastScenario
   scenarios: ForecastScenario[]
 }
@@ -185,6 +186,18 @@ const sec10QUrl = "https://www.sec.gov/Archives/edgar/data/1065280/0001065280260
 const sec8KUrl = "https://www.sec.gov/Archives/edgar/data/1065280/000106528026000137/nflx-20260410.htm"
 const q1ShareholderLetterUrl = "https://s22.q4cdn.com/959853165/files/doc_financials/2026/q1/FINAL-Q1-26-Shareholder-Letter.pdf"
 const q1TranscriptUrl = "https://www.fool.com/earnings/call-transcripts/2026/04/16/netflix-nflx-q1-2026-earnings-call-transcript/"
+const stockAnalysisForecastUrl = "https://stockanalysis.com/stocks/nflx/forecast/"
+
+const conventionalProjectionSources = [
+  "StockAnalysis/Finnhub: FY2026 revenue $52.46B, FY2027 revenue $58.62B, FY2026 EPS $3.66, FY2027 EPS $3.92.",
+  "Zacks: FY2026 revenue $51.36B, FY2027 revenue $57.44B, FY2026 EPS $3.17, FY2027 EPS $3.86.",
+  "S&P Global/Visible Alpha: FY2026 revenue about $51.4B and FY2027 diluted EPS $4.01.",
+].join(" ")
+
+const conventionalProjectionBaseline = {
+  revenue: [51734, 58030, Number.NaN, Number.NaN, Number.NaN],
+  dilutedEps: [3.33, 3.93, Number.NaN, Number.NaN, Number.NaN],
+}
 
 const scenarios: ForecastScenario[] = [
   {
@@ -262,11 +275,18 @@ function roundOne(value: number) {
   return Math.round(value * 10) / 10
 }
 
-function makeAssumption(input: Omit<ForecastAssumption, "secEvidence" | "transcriptEvidence">): ForecastAssumption {
+function makeAssumption(
+  input: Omit<ForecastAssumption, "secEvidence" | "transcriptEvidence"> & { transcriptEvidence?: string },
+): ForecastAssumption {
   return {
     ...input,
     secEvidence: `${input.sourceDocument}: ${input.disclosure}`,
-    transcriptEvidence: input.sourceDocument.includes("Transcript") ? input.disclosure : "See latest earnings-call transcript for management commentary and confirmation.",
+    transcriptEvidence:
+      input.transcriptEvidence ??
+      [
+        "Transcript evidence unavailable for this ticker/key because Finnhub transcript metadata is plan-gated.",
+        `Nearest source snippet: ${input.sourceDocument}: ${input.disclosure}`,
+      ].join(" "),
   }
 }
 
@@ -280,6 +300,7 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       sourceDocument: "Q1 2026 shareholder letter and earnings interview",
       sourceUrl: q1ShareholderLetterUrl,
       disclosure: "Management maintained 2026 revenue growth guidance of 12%-14%, with Q2 2026 revenue expected at $12.57B and continued organic growth emphasis.",
+      transcriptEvidence: "Q1 2026 shareholder letter / call evidence: 2026 revenue growth guidance of 12%-14%; Q2 2026 revenue expected at $12.57B; management described the growth plan as organic rather than M&A-led.",
       assumptionUsed: "Base case uses the midpoint for 2026, then decelerates as the revenue base scales.",
       affectedLineItem: "Revenue",
       projectionPeriod: "2026E-2030E",
@@ -292,6 +313,7 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       sourceDocument: "Q1 2026 shareholder letter, latest 10-Q, and earnings interview",
       sourceUrl: sec10QUrl,
       disclosure: "Management maintained 2026 operating margin guidance of 31.5% and said the intent is to grow operating margin each year, with year-to-year variation.",
+      transcriptEvidence: "Q1 2026 shareholder letter / call evidence: 2026 operating margin guidance held at 31.5%; management said the long-term intent is to increase operating margin each year while allowing annual variation.",
       assumptionUsed: "Operating expense is calculated as the plug between gross profit and guided operating income; cost of revenue uses the residual gross margin implied by the operating-margin path and normalized opex intensity.",
       affectedLineItem: "Cost of revenue, operating expenses, operating income",
       projectionPeriod: "2026E-2030E",
@@ -304,6 +326,7 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       sourceDocument: "2025 Form 10-K and 2026 Form 10-Q",
       sourceUrl: sec10KUrl,
       disclosure: "Historical effective tax expense is tied to pretax income from SEC filings; Q1 2026 included discrete items, so forward tax rate uses a normalized historical range.",
+      transcriptEvidence: "No specific transcript tax-rate guidance captured; note uses SEC 2025 Form 10-K and Q1 2026 Form 10-Q tax disclosures as the controlling evidence.",
       assumptionUsed: "Tax expense equals pretax income multiplied by the selected normalized tax rate.",
       affectedLineItem: "Tax expense, net income, EPS",
       projectionPeriod: "2026E-2030E",
@@ -316,6 +339,7 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       sourceDocument: "2025 Form 10-K and Q1 2026 shareholder letter",
       sourceUrl: q1ShareholderLetterUrl,
       disclosure: "Netflix reported strong free cash flow and raised FY2026 FCF guidance after Q1; missing account-level working-capital guidance is bridged with historical conversion.",
+      transcriptEvidence: "Q1 2026 shareholder letter / call evidence: management raised FY2026 free cash flow guidance after Q1 and highlighted strong free cash flow; no account-level receivables, payables, or inventory guide was captured.",
       assumptionUsed: "Working capital and other operating items are the formula bridge from net income plus non-cash items to CFO.",
       affectedLineItem: "Working capital and other operating assets/liabilities, CFO, FCF",
       projectionPeriod: "2026E-2030E",
@@ -328,6 +352,7 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       sourceDocument: "2025 Form 10-K cash flow statement and 2026 Form 10-Q",
       sourceUrl: sec10KUrl,
       disclosure: "Capital expenditures are modest relative to revenue in reported filings; no specific multi-year capex guide was disclosed.",
+      transcriptEvidence: "No specific multi-year capex line was captured from call evidence; the note uses reported capex history and keeps content cash costs inside operating cash flow.",
       assumptionUsed: "Capex is modeled from historical capex intensity and kept separate from content cash costs captured in operating cash flow.",
       affectedLineItem: "Capital expenditures, free cash flow, investing cash flow",
       projectionPeriod: "2026E-2030E",
@@ -340,6 +365,7 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       sourceDocument: "April 2026 8-K and Q1 2026 earnings interview",
       sourceUrl: sec8KUrl,
       disclosure: "Netflix authorized an additional $25B share repurchase program and reiterated returning excess cash to shareholders after business investment and liquidity needs.",
+      transcriptEvidence: "April 2026 8-K / call evidence: additional $25B repurchase authorization; management reiterated returning excess cash after funding business investment and liquidity needs.",
       assumptionUsed: "Buybacks are driven by FCF and the scenario share-count reduction; EPS uses net income divided by diluted shares.",
       affectedLineItem: "Share repurchases, diluted shares, EPS, financing cash flow",
       projectionPeriod: "2026E-2030E",
@@ -352,9 +378,23 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       sourceDocument: "2025 Form 10-K debt footnote and 2026 Form 10-Q",
       sourceUrl: sec10KUrl,
       disclosure: "SEC filings disclose long-term debt, interest expense, and maturities; no new debt issuance is assumed without disclosed financing need.",
+      transcriptEvidence: "No transcript refinancing line was captured; SEC debt footnote, interest expense history, and maturity schedule drive the debt and interest assumptions.",
       assumptionUsed: "Interest expense is modeled from beginning debt at a normalized cost; debt repayments reduce financing cash flow and ending debt.",
       affectedLineItem: "Interest expense, debt repayment, financing cash flow, ending cash",
       projectionPeriod: "2026E-2030E",
+    }),
+    makeAssumption({
+      id: "conventional-projection-check",
+      label: "Conventional projection tolerance",
+      value: "Model revenue and EPS should remain within 10% of captured consensus-style projections where public estimates are available.",
+      confidence: "Medium",
+      sourceDocument: "StockAnalysis/Finnhub, Zacks, and S&P Global/Visible Alpha",
+      sourceUrl: stockAnalysisForecastUrl,
+      disclosure: conventionalProjectionSources,
+      transcriptEvidence: "External projection evidence: StockAnalysis/Finnhub, Zacks, and S&P Global/Visible Alpha estimates are used as a reasonableness check for revenue and EPS only.",
+      assumptionUsed: "Compare model revenue and diluted EPS against the average of available conventional projections for 2026E and 2027E; 2028E-2030E are left blank until a reliable public consensus baseline is captured.",
+      affectedLineItem: "Revenue, diluted EPS, validation checks",
+      projectionPeriod: "2026E-2027E",
     }),
   ]
 }
@@ -489,6 +529,79 @@ function validationChecks(historical: ModelYearData[], projected: ModelYearData[
   ]
 }
 
+function conventionalVariance(modelValues: number[], consensusValues: number[]) {
+  return modelValues.map((value, index) => {
+    const consensusValue = consensusValues[index]
+
+    if (!Number.isFinite(consensusValue) || consensusValue === 0) {
+      return Number.NaN
+    }
+
+    return roundOne((value / consensusValue - 1) * 100)
+  })
+}
+
+function buildConventionalProjectionStatement(projected: ModelYearData[], assumption: ForecastAssumption): FinancialStatement {
+  const projectedRevenue = values("revenue", projected)
+  const projectedEps = valuesOne("dilutedEps", projected)
+
+  return {
+    title: "Conventional Projection Check",
+    years,
+    projectedYears,
+    lineItems: [
+      {
+        id: "model-revenue",
+        label: "Model revenue",
+        historical: years.map(() => Number.NaN),
+        projected: projectedRevenue,
+        formula: "Current model revenue projection",
+        notes: notes(assumption),
+      },
+      {
+        id: "conventional-revenue",
+        label: "Conventional revenue baseline",
+        historical: years.map(() => Number.NaN),
+        projected: conventionalProjectionBaseline.revenue,
+        formula: "Average of available StockAnalysis/Finnhub, Zacks, and S&P Global/Visible Alpha estimates",
+        notes: notes(assumption),
+      },
+      {
+        id: "variance-revenue-consensus-check",
+        label: "Revenue variance vs conventional",
+        historical: years.map(() => Number.NaN),
+        projected: conventionalVariance(projectedRevenue, conventionalProjectionBaseline.revenue),
+        formula: "(Model revenue / conventional revenue baseline - 1) x 100; flag if outside +/-10%",
+        notes: notes(assumption),
+      },
+      {
+        id: "model-diluted-eps",
+        label: "Model diluted EPS",
+        historical: years.map(() => Number.NaN),
+        projected: projectedEps,
+        formula: "Current model diluted EPS projection",
+        notes: notes(assumption),
+      },
+      {
+        id: "conventional-diluted-eps",
+        label: "Conventional diluted EPS baseline",
+        historical: years.map(() => Number.NaN),
+        projected: conventionalProjectionBaseline.dilutedEps,
+        formula: "Average of available StockAnalysis/Finnhub, Zacks, and S&P Global/Visible Alpha estimates",
+        notes: notes(assumption),
+      },
+      {
+        id: "variance-eps-consensus-check",
+        label: "EPS variance vs conventional",
+        historical: years.map(() => Number.NaN),
+        projected: conventionalVariance(projectedEps, conventionalProjectionBaseline.dilutedEps),
+        formula: "(Model EPS / conventional EPS baseline - 1) x 100; flag if outside +/-10%",
+        notes: notes(assumption),
+      },
+    ],
+  }
+}
+
 function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelResult {
   const selectedScenario = scenarios.find((scenario) => scenario.name === scenarioName) ?? scenarios[0]
   const assumptions = buildNetflixAssumptions(selectedScenario)
@@ -499,6 +612,7 @@ function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelR
   const capexAssumption = assumptions[4]
   const buybackAssumption = assumptions[5]
   const debtAssumption = assumptions[6]
+  const conventionalAssumption = assumptions[7]
   const projected = projectNetflixData(selectedScenario)
   const checks = validationChecks(netflixHistorical, projected)
 
@@ -598,6 +712,7 @@ function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelR
         formula: check.formula,
       })),
     },
+    conventionalProjectionStatement: buildConventionalProjectionStatement(projected, conventionalAssumption),
   }
 }
 
