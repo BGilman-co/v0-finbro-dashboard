@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, Download, FileKey2, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
+import { CalendarClock, Download, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
 import { buildPreviewModel, type FinancialStatement, type ForecastAssumption, type ForecastCellNote, type ScenarioName } from "@/lib/cash-flow-model"
 import { loadEarningsStatus } from "@/lib/static-market-data"
 import type { FinnhubEarningsPayload } from "@/lib/finnhub-data"
@@ -319,15 +319,23 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
   const [selectedScenario, setSelectedScenario] = useState<ScenarioName>("base")
   const [activeNote, setActiveNote] = useState<ActiveNote | null>(null)
 
-  const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol) ?? securities[0]
+  const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol)
+  const activeCompany = selectedSecurity ?? {
+    symbol: selectedSymbol,
+    name: `${selectedSymbol} company`,
+    sector: "Company-specific",
+    exchange: "US",
+    cik: undefined,
+  }
   const model = useMemo(
     () =>
       buildPreviewModel({
-        ticker: selectedSecurity?.symbol ?? "AAPL",
-        name: selectedSecurity?.name ?? "Apple Inc.",
-        cik: selectedSecurity?.cik,
+        ticker: activeCompany.symbol,
+        name: activeCompany.name,
+        cik: activeCompany.cik,
+        sector: activeCompany.sector,
       }, selectedScenario),
-    [selectedScenario, selectedSecurity],
+    [activeCompany.cik, activeCompany.name, activeCompany.sector, activeCompany.symbol, selectedScenario],
   )
   const filteredSecurities = securities
     .filter((security) => `${security.symbol} ${security.name}`.toLowerCase().includes(tickerQuery.toLowerCase()))
@@ -338,11 +346,22 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
     onSymbolChange(symbol)
   }
 
+  const applyTickerQuery = () => {
+    const symbol = tickerQuery.trim().toUpperCase()
+
+    if (!symbol) {
+      return
+    }
+
+    onSymbolChange(symbol)
+    setSelectedSymbols((current) => (current.includes(symbol) ? current : [symbol, ...current]))
+  }
+
   useEffect(() => {
     let isMounted = true
 
     async function refreshEarningsStatus() {
-      const symbol = selectedSecurity?.symbol ?? selectedSymbol
+      const symbol = activeCompany.symbol
 
       if (!symbol) {
         return
@@ -370,10 +389,10 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
       isMounted = false
       window.clearInterval(interval)
     }
-  }, [selectedSecurity?.symbol, selectedSymbol])
+  }, [activeCompany.symbol, selectedSymbol])
 
   const exportModel = () => {
-    const prefix = `${selectedSecurity?.symbol ?? "model"}-sec-finnhub-model`
+    const prefix = `${activeCompany.symbol}-sec-finnhub-model`
     const csv = [
       model.incomeStatement.title,
       statementToCsv(model.incomeStatement),
@@ -388,7 +407,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
       statementToCsv(model.validationStatement),
     ].join("\n")
     const notes = {
-      company: selectedSecurity,
+      company: activeCompany,
       selectedSymbols,
       assumptions: model.assumptions,
       scenario: model.selectedScenario,
@@ -445,18 +464,32 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="mt-6">
           <div className="rounded-xl border border-[#1F1F1F] p-4">
             <label className="text-sm font-medium text-[#E7E7E7]" htmlFor="ticker-search">
               Company ticker
             </label>
-            <input
-              id="ticker-search"
-              value={tickerQuery}
-              onChange={(event) => setTickerQuery(event.target.value.toUpperCase())}
-              placeholder="AAPL, MSFT, or search all stocks"
-              className="mt-2 h-10 w-full rounded-lg border border-[#2A2A2A] bg-black px-3 text-sm text-white outline-none focus:border-[#D9F99D]"
-            />
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <input
+                id="ticker-search"
+                value={tickerQuery}
+                onChange={(event) => setTickerQuery(event.target.value.toUpperCase())}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    applyTickerQuery()
+                  }
+                }}
+                placeholder="AAPL, MSFT, or any ticker"
+                className="h-10 min-w-0 flex-1 rounded-lg border border-[#2A2A2A] bg-black px-3 text-sm text-white outline-none focus:border-[#D9F99D]"
+              />
+              <button
+                type="button"
+                onClick={applyTickerQuery}
+                className="h-10 rounded-lg bg-[#D9F99D] px-4 text-sm font-medium text-black transition-colors hover:bg-[#C8EA8A] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9F99D]"
+              >
+                Analyze ticker
+              </button>
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -473,6 +506,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
                 Clear
               </button>
               <span className="rounded-md bg-[#171717] px-3 py-2 text-xs text-[#A7A7A7]">{selectedSymbols.length} selected</span>
+              <span className="rounded-md bg-[#171717] px-3 py-2 text-xs text-[#E7E7E7]">Active: {activeCompany.symbol}</span>
             </div>
             <div className="mt-4 grid max-h-52 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
               {filteredSecurities.map((security) => (
@@ -491,21 +525,6 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
               ))}
             </div>
           </div>
-
-          <div className="rounded-xl border border-[#1F1F1F] p-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-[#E7E7E7]">
-              <FileKey2 className="h-4 w-4" />
-              Environment inputs
-            </div>
-            <div className="mt-3 rounded-lg bg-[#141414] p-3 text-xs leading-5 text-[#A7A7A7]">
-              `FINNHUB_API_KEY` is read from `.env.local` by server routes. Add `SEC_USER_AGENT` when you want a custom SEC-compliant request identity. The browser only receives modeled output, not the raw key.
-            </div>
-            <div className="mt-3 rounded-lg border border-[#1F1F1F] p-3">
-              <div className="text-xs uppercase tracking-wide text-[#919191]">Active company</div>
-              <div className="mt-1 text-lg font-semibold text-white">{selectedSecurity?.symbol ?? selectedSymbol}</div>
-              <div className="mt-1 text-sm text-[#A7A7A7]">{selectedSecurity?.name ?? "Select a company from the universe list"}</div>
-            </div>
-          </div>
         </div>
 
         <div className="mt-5 grid gap-3 text-xs text-[#A7A7A7] md:grid-cols-3">
@@ -515,7 +534,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
           <a className="inline-flex items-center gap-2 rounded-lg bg-[#141414] px-3 py-2 hover:text-white" href={model.filings[0]?.sourceUrl} target="_blank" rel="noreferrer">
             SEC submissions <SquareArrowOutUpRight className="h-3 w-3" />
           </a>
-          <a className="inline-flex items-center gap-2 rounded-lg bg-[#141414] px-3 py-2 hover:text-white" href={selectedSecurity?.cik ? `https://data.sec.gov/api/xbrl/companyfacts/CIK${selectedSecurity.cik.padStart(10, "0")}.json` : "https://data.sec.gov/api/xbrl/companyfacts/"} target="_blank" rel="noreferrer">
+          <a className="inline-flex items-center gap-2 rounded-lg bg-[#141414] px-3 py-2 hover:text-white" href={activeCompany.cik ? `https://data.sec.gov/api/xbrl/companyfacts/CIK${activeCompany.cik.padStart(10, "0")}.json` : "https://data.sec.gov/api/xbrl/companyfacts/"} target="_blank" rel="noreferrer">
             Company facts <SquareArrowOutUpRight className="h-3 w-3" />
           </a>
         </div>

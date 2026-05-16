@@ -2,6 +2,7 @@ export type Company = {
   ticker: string
   name: string
   cik?: string
+  sector?: string
 }
 
 export type Filing = {
@@ -763,18 +764,79 @@ function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelR
   }
 }
 
+function withGenericCompanyEvidence(result: ModelResult, company: Company): ModelResult {
+  const companyName = company.name || company.ticker
+  const sourceUrl = company.cik
+    ? `https://data.sec.gov/api/xbrl/companyfacts/CIK${company.cik.padStart(10, "0")}.json`
+    : "https://www.sec.gov/files/company_tickers.json"
+  const sourceDocument = company.cik ? `${companyName} SEC CompanyFacts` : `${company.ticker} SEC CIK lookup pending`
+  const revenueAssumption = result.assumptions[0]
+  const genericRevenueAssumption: ForecastAssumption = {
+    ...revenueAssumption,
+    sourceDocument,
+    sourceUrl,
+    disclosure: [
+      `${company.ticker} revenue growth should be rebuilt from company-specific filings and Finnhub events, not Netflix drivers.`,
+      "Driver stack: unit/customer growth, price/mix, volume, recurring revenue retention, segment mix, FX, acquisitions/divestitures, and cyclical demand.",
+      company.sector ? `Sector lens: ${company.sector}.` : "Sector lens will use the selected security's industry when available.",
+    ].join(" "),
+    transcriptEvidence:
+      "Use Finnhub earnings calendar/calls for exact management language on demand, pricing, guidance, backlog/RPO, customer growth, churn/retention, FX, and one-time items.",
+    assumptionUsed:
+      "Revenue = prior-year revenue x company-specific driver stack. Replace the template rates once SEC segment data, call guidance, and outside estimates are available.",
+    keyFigures: [
+      `${company.ticker}: company-specific model target.`,
+      "Needed drivers: units/customers, price/ARM/ASP, segment mix, FX, M&A, churn/retention or backlog/RPO.",
+      "Use management guidance first; cross-check against consensus or outside industry data.",
+      "Flag one-time demand pulls, divestitures, acquisition revenue, and currency translation separately.",
+    ],
+  }
+
+  const genericAssumptions = [genericRevenueAssumption, ...result.assumptions.slice(1)].map((assumption) => ({
+    ...assumption,
+    sourceDocument: assumption.id === "revenue-growth" ? genericRevenueAssumption.sourceDocument : assumption.sourceDocument,
+    sourceUrl: assumption.id === "revenue-growth" ? genericRevenueAssumption.sourceUrl : assumption.sourceUrl,
+  }))
+  const revenueNotes = notes(genericRevenueAssumption, undefined, undefined, "Revenue")
+  const patchStatement = (statement: FinancialStatement): FinancialStatement => ({
+    ...statement,
+    lineItems: statement.lineItems.map((lineItem) =>
+      lineItem.id === "assumption-revenue-growth" || lineItem.id === "revenue"
+        ? { ...lineItem, notes: revenueNotes }
+        : lineItem,
+    ),
+  })
+
+  return {
+    ...result,
+    assumptions: genericAssumptions,
+    transcripts: [
+      {
+        id: `${company.ticker.toLowerCase()}-finnhub-events`,
+        ticker: company.ticker,
+        quarter: "Latest available",
+        date: "Updated from Finnhub earnings calendar when available",
+        evidence: ["guidance", "demand", "pricing", "volume", "segment mix", "FX", "one-time items"],
+      },
+    ],
+    filings: [
+      {
+        accessionNumber: company.cik ? "sec-companyfacts" : "cik-lookup-needed",
+        form: "10-K",
+        fiscalYear: new Date().getFullYear(),
+        filedAt: "Latest available",
+        sourceUrl,
+      },
+    ],
+    incomeStatement: patchStatement(result.incomeStatement),
+    cashFlowStatement: patchStatement(result.cashFlowStatement),
+  }
+}
+
 export function buildPreviewModel(company: Company, scenarioName: ScenarioName = "base"): ModelResult {
   if (company.ticker.toUpperCase() === "NFLX" || company.name.toLowerCase().includes("netflix")) {
     return buildNetflixModel(company, scenarioName)
   }
 
-  return buildNetflixModel(
-    {
-      ...company,
-      ticker: company.ticker,
-      name: `${company.name} disclosure model template`,
-      cik: company.cik,
-    },
-    scenarioName,
-  )
+  return withGenericCompanyEvidence(buildNetflixModel(company, scenarioName), company)
 }
