@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Download, KeyRound, Settings2, SquareArrowOutUpRight } from "lucide-react"
+import { Download, FileKey2, SquareArrowOutUpRight } from "lucide-react"
 import { buildPreviewModel, type FinancialStatement, type ForecastCellNote } from "@/lib/cash-flow-model"
 import type { Security } from "@/lib/market-types"
 
@@ -136,11 +136,8 @@ function statementToCsv(statement: FinancialStatement) {
 }
 
 export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: CashFlowModelerProps) {
-  const [finnhubKey, setFinnhubKey] = useState("")
-  const [secUserAgent, setSecUserAgent] = useState("")
   const [tickerQuery, setTickerQuery] = useState(selectedSymbol)
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([selectedSymbol])
-  const [showSettings, setShowSettings] = useState(false)
 
   const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol) ?? securities[0]
   const model = useMemo(
@@ -191,18 +188,10 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
             <p className="text-xs font-medium uppercase tracking-wide text-[#D9F99D]">SEC EDGAR + Finnhub forecast model</p>
             <h1 className="mt-2 text-2xl font-semibold text-white">5-year cash flow projection builder</h1>
             <p className="mt-3 text-sm leading-6 text-[#A7A7A7]">
-              Select one ticker or the full stock universe, enter the Finnhub key and optional SEC User-Agent, then build a normalized filing-and-transcript-backed model. This web version stores the key only in this browser session; a native Xcode build should move that storage to Keychain.
+              Select one ticker or the full stock universe, then build a normalized filing-and-transcript-backed model. Finnhub and SEC request credentials are read from local environment variables, so secrets never need to be typed into the website.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => setShowSettings((current) => !current)}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#2A2A2A] px-3 text-sm text-[#E7E7E7] transition-colors hover:bg-[#171717] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9F99D]"
-            >
-              <Settings2 className="h-4 w-4" />
-              Settings
-            </button>
             <button
               type="button"
               onClick={exportModel}
@@ -263,39 +252,17 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
 
           <div className="rounded-xl border border-[#1F1F1F] p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-[#E7E7E7]">
-              <KeyRound className="h-4 w-4" />
-              Xcode prompt inputs
+              <FileKey2 className="h-4 w-4" />
+              Environment inputs
             </div>
-            <div className="mt-3 grid gap-3">
-              <input
-                value={finnhubKey}
-                onChange={(event) => setFinnhubKey(event.target.value)}
-                type="password"
-                placeholder="Finnhub API key"
-                className="h-10 rounded-lg border border-[#2A2A2A] bg-black px-3 text-sm text-white outline-none focus:border-[#D9F99D]"
-              />
-              <input
-                value={selectedSecurity?.symbol ?? selectedSymbol}
-                onChange={(event) => {
-                  const symbol = event.target.value.toUpperCase()
-                  onSymbolChange(symbol)
-                  setTickerQuery(symbol)
-                }}
-                placeholder="Company ticker"
-                className="h-10 rounded-lg border border-[#2A2A2A] bg-black px-3 text-sm text-white outline-none focus:border-[#D9F99D]"
-              />
-              <input
-                value={secUserAgent}
-                onChange={(event) => setSecUserAgent(event.target.value)}
-                placeholder="Optional SEC User-Agent email/name"
-                className="h-10 rounded-lg border border-[#2A2A2A] bg-black px-3 text-sm text-white outline-none focus:border-[#D9F99D]"
-              />
+            <div className="mt-3 rounded-lg bg-[#141414] p-3 text-xs leading-5 text-[#A7A7A7]">
+              Add `FINNHUB_API_KEY` to `.env.local`. Add `SEC_USER_AGENT` when you want a custom SEC-compliant request identity. The browser only receives modeled output, not the raw key.
             </div>
-            {showSettings ? (
-              <div className="mt-4 rounded-lg bg-[#141414] p-3 text-xs leading-5 text-[#A7A7A7]">
-                Settings screen: update the Finnhub API key here. In a native SwiftUI/Xcode version this field should persist to Keychain; this dashboard intentionally avoids storing secrets beyond the current session.
-              </div>
-            ) : null}
+            <div className="mt-3 rounded-lg border border-[#1F1F1F] p-3">
+              <div className="text-xs uppercase tracking-wide text-[#919191]">Active company</div>
+              <div className="mt-1 text-lg font-semibold text-white">{selectedSecurity?.symbol ?? selectedSymbol}</div>
+              <div className="mt-1 text-sm text-[#A7A7A7]">{selectedSecurity?.name ?? "Select a company from the universe list"}</div>
+            </div>
           </div>
         </div>
 

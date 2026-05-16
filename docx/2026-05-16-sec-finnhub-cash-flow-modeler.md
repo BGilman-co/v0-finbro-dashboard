@@ -2,12 +2,12 @@
 
 ## Request
 
-Add a sidebar entry above Researcher for a model that projects historical and 5-year future company cash flows from SEC EDGAR filings and Finnhub earnings-call transcripts. Include all-stock selection, setup prompts for Finnhub API key, company ticker, optional SEC User-Agent, two spreadsheet-style tables, projection notes, export support, and foreign exchange line items.
+Add a sidebar entry above Researcher for a model that projects historical and 5-year future company cash flows from SEC EDGAR filings and Finnhub earnings-call transcripts. Include all-stock selection, environment-based Finnhub configuration, company ticker selection, optional SEC User-Agent support, two spreadsheet-style tables, projection notes, export support, and foreign exchange line items.
 
 ## Decisions
 
-- The repository is a Next.js dashboard, not an Xcode project, so the implementation is a web-app modeler view.
-- The Finnhub key is collected in the browser UI but not persisted. Native Keychain storage remains a Swift/Xcode follow-up.
+- The repository is a Next.js dashboard, so the implementation is a web-app modeler view.
+- The Finnhub key should be provided through `.env.local` as `FINNHUB_API_KEY`; the website does not ask for it.
 - The exporter produces CSV plus companion JSON cell notes because the project does not currently include a Swift or Node XLSX writer with comment support.
 - The screen renders exactly two spreadsheet-style financial tables: income statement and cash flow statement.
 - Foreign exchange is included in both statements:
@@ -28,12 +28,12 @@ The typed helper defines `Company`, `Filing`, `XBRLFact`, `FinancialStatement`, 
 ## Status
 
 - Added `CASH FLOW MODEL` above `RESEARCHER` in desktop and mobile navigation.
-- Added stock search, select-all, Finnhub key, ticker, optional SEC User-Agent, settings panel, SEC source links, two tables, projected-cell notes, and CSV/JSON export.
+- Added stock search, select-all, environment input guidance, ticker selection, SEC source links, two tables, projected-cell notes, and CSV/JSON export.
 - Added fallback XBRL mappings for revenue, margins, interest, tax, working capital, capex, debt, leases, financing obligations, and FX.
 
 ## Follow-Ups
 
-- Add a secure server-side Finnhub proxy or native Swift implementation with Keychain.
+- Add a secure server-side Finnhub proxy that reads `FINNHUB_API_KEY` from the environment.
 - Replace preview model values with live SEC companyfacts normalization and Finnhub transcript scanning.
 - Add an XLSX writer that preserves comments directly in Excel.
 - Add formal unit tests once the repo has a test runner configured.
