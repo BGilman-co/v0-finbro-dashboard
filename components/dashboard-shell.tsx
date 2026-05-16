@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { TickerList, type SortKey } from "@/components/ticker-list"
 import { Sidebar, type NavItem } from "@/components/sidebar"
 import { Header } from "@/components/header"
+import { CashFlowModeler } from "@/components/cash-flow-modeler"
 import { MarketIntelligence } from "@/components/market-intelligence"
 import { NetflixValuationResearch } from "@/components/netflix-valuation-research"
 import { PerformanceChart } from "@/components/performance-chart"
@@ -24,6 +25,10 @@ function ViewPanel({ activeView }: { activeView: NavItem }) {
     arbitrader: {
       title: "Screener",
       detail: "Filter the S&P 500 universe by symbol, company, sector, quote status, and filings.",
+    },
+    cashFlowModeler: {
+      title: "Cash Flow Model",
+      detail: "Build SEC EDGAR and Finnhub transcript-backed historical financial statements and 5-year projected cash flow models.",
     },
     researcher: {
       title: "Researcher",
@@ -54,6 +59,7 @@ function MobileNav({ activeView, onNavigate }: { activeView: NavItem; onNavigate
     { id: "dashboard", label: "Database" },
     { id: "analytics", label: "Analytics" },
     { id: "arbitrader", label: "Screener" },
+    { id: "cashFlowModeler", label: "Cash Flow" },
     { id: "researcher", label: "Researcher" },
     { id: "funds", label: "Datasets" },
   ]
@@ -107,7 +113,7 @@ export function DashboardShell() {
 
   useEffect(() => {
     const hash = window.location.hash.replace("#", "") as NavItem
-    if (["dashboard", "analytics", "arbitrader", "researcher", "funds"].includes(hash)) {
+    if (["dashboard", "analytics", "arbitrader", "cashFlowModeler", "researcher", "funds"].includes(hash)) {
       setActiveView(hash)
     }
   }, [])
@@ -208,7 +214,16 @@ export function DashboardShell() {
 
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <ViewPanel activeView={activeView} />
-            {activeView === "researcher" ? (
+            {activeView === "cashFlowModeler" ? (
+              <CashFlowModeler
+                securities={securities}
+                selectedSymbol={selectedSecurity?.symbol ?? selectedSymbol}
+                onSymbolChange={(symbol) => {
+                  setSelectedSymbol(symbol)
+                  setActiveView("cashFlowModeler")
+                }}
+              />
+            ) : activeView === "researcher" ? (
               <NetflixValuationResearch />
             ) : (
               <>
