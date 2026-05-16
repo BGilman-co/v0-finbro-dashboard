@@ -58,6 +58,7 @@ export type ForecastAssumption = {
   assumptionUsed: string
   affectedLineItem: string
   projectionPeriod: string
+  keyFigures?: string[]
   secEvidence: string
   transcriptEvidence: string
 }
@@ -198,6 +199,14 @@ const conventionalProjectionSources = [
   "S&P Global/Visible Alpha: FY2026 revenue about $51.4B and FY2027 diluted EPS $4.01.",
 ].join(" ")
 
+const revenueDriverEvidence = [
+  "2026 revenue guide: $50.7B-$51.7B / 12%-14% reported growth.",
+  "FX-neutral guide: 11%-13%; model separates a small FX layer from operating drivers.",
+  "Drivers named by management: membership growth, pricing, and roughly doubling ads revenue to about $3B in 2026.",
+  "Scale runway: more than 325M paid members; smart-TV household penetration under 45%; roughly 5% global TV view share.",
+  "Consensus cross-check: Visible Alpha FY2026 revenue about $51.4B; advertising revenue expectations about $3.2B in 2026 and $5.3B in 2027.",
+]
+
 const conventionalProjectionBaseline = {
   revenue: [51734, 58030, Number.NaN, Number.NaN, Number.NaN],
   dilutedEps: [3.33, 3.93, Number.NaN, Number.NaN, Number.NaN],
@@ -303,11 +312,17 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       confidence: "High",
       sourceDocument: "Q1 2026 shareholder letter and earnings interview",
       sourceUrl: q1ShareholderLetterUrl,
-      disclosure: "Management maintained 2026 revenue growth guidance of 12%-14%, with Q2 2026 revenue expected at $12.57B and continued organic growth emphasis.",
-      transcriptEvidence: "Q1 2026 shareholder letter / call evidence: 2026 revenue growth guidance of 12%-14%; Q2 2026 revenue expected at $12.57B; management described the growth plan as organic rather than M&A-led.",
-      assumptionUsed: "Base case uses the midpoint for 2026, then decelerates as the revenue base scales.",
+      disclosure: revenueDriverEvidence.join(" "),
+      transcriptEvidence: "Call evidence: growth framed around organic member additions, pricing/plan monetization, broad distribution, and a growing ad business; 2026 guide held at 12%-14%.",
+      assumptionUsed: "Revenue = prior-year revenue x blended growth driver stack: member growth + pricing/ARM + ads contribution + FX; growth decelerates as penetration rises.",
       affectedLineItem: "Revenue",
       projectionPeriod: "2026E-2030E",
+      keyFigures: [
+        "2026E: 13.0% base growth; inside 12%-14% guide.",
+        "2027E-2030E: 10.5%, 9.0%, 7.5%, 6.0% as scale and penetration mature.",
+        "Ads: about $3B in 2026; external estimates about $5.3B in 2027.",
+        "Market runway: 325M+ paid members; under 45% smart-TV household penetration; about 5% global TV view share.",
+      ],
     }),
     makeAssumption({
       id: "operating-margin",
@@ -411,7 +426,7 @@ function note(year: number, assumption: ForecastAssumption): ForecastCellNote {
     secEvidence: assumption.secEvidence,
     transcriptEvidence: assumption.transcriptEvidence,
     formula: assumption.value,
-    figures: [assumption.affectedLineItem, assumption.projectionPeriod],
+    figures: assumption.keyFigures ?? [assumption.affectedLineItem, assumption.projectionPeriod],
     citations: [assumption.disclosure, assumption.transcriptEvidence].filter(Boolean),
     movement: "Compared with the prior year, this projected amount moves according to the linked driver above: revenue growth, margin path, cash-conversion rate, capex intensity, financing schedule, or share-count change.",
     confidence: assumption.confidence,
