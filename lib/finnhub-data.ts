@@ -43,6 +43,8 @@ export type FinnhubEarningsPayload = {
   transcripts: FinnhubTranscriptMetadata[]
   shouldRefreshModel: boolean
   refreshReason: string
+  earningsCalendarAvailable: boolean
+  transcriptsAvailable: boolean
   provider: "Finnhub" | "Unavailable"
   message: string
   updatedAt: string
@@ -155,6 +157,8 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
       transcripts: [],
       shouldRefreshModel: false,
       refreshReason: "FINNHUB_API_KEY is not configured in .env.local.",
+      earningsCalendarAvailable: false,
+      transcriptsAvailable: false,
       provider: "Unavailable",
       message: "Add FINNHUB_API_KEY to .env.local to enable automatic earnings calendar and call transcript checks.",
       updatedAt,
@@ -162,10 +166,14 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
   }
 
   try {
-    const [earningsEvents, transcripts] = await Promise.all([
+    const [earningsResult, transcriptsResult] = await Promise.allSettled([
       fetchEarningsCalendar(normalizedSymbol, isoDate(-14), isoDate(14)),
       fetchTranscriptsList(normalizedSymbol),
     ])
+    const earningsEvents = earningsResult.status === "fulfilled" ? earningsResult.value : []
+    const transcripts = transcriptsResult.status === "fulfilled" ? transcriptsResult.value : []
+    const earningsCalendarAvailable = earningsResult.status === "fulfilled"
+    const transcriptsAvailable = transcriptsResult.status === "fulfilled"
     const hasFreshEvent = earningsEvents.some(isEventInRefreshWindow)
     const hasFreshTranscript = latestTranscriptIsRecent(transcripts)
     const shouldRefreshModel = hasFreshEvent || hasFreshTranscript
@@ -173,7 +181,14 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
       ? "New or recent earnings-call transcript metadata is available."
       : hasFreshEvent
         ? "An earnings release is inside the automatic refresh window."
-        : "No near-term earnings release or recent call transcript was found."
+        : transcriptsAvailable
+          ? "No near-term earnings release or recent call transcript was found."
+          : "Earnings calendar is connected. Transcript access is blocked by Finnhub for this key or plan."
+    const message = earningsCalendarAvailable
+      ? transcriptsAvailable
+        ? `Checked Finnhub earnings calendar and transcript metadata for ${normalizedSymbol}.`
+        : `Checked Finnhub earnings calendar for ${normalizedSymbol}. Transcript metadata returned 403 access denied.`
+      : "Finnhub did not return usable earnings calendar data."
 
     return {
       symbol: normalizedSymbol,
@@ -181,8 +196,10 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
       transcripts: transcripts.slice(0, 6),
       shouldRefreshModel,
       refreshReason,
-      provider: "Finnhub",
-      message: `Checked Finnhub earnings calendar and transcript metadata for ${normalizedSymbol}.`,
+      earningsCalendarAvailable,
+      transcriptsAvailable,
+      provider: earningsCalendarAvailable ? "Finnhub" : "Unavailable",
+      message,
       updatedAt,
     }
   } catch (error) {
@@ -192,6 +209,8 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
       transcripts: [],
       shouldRefreshModel: false,
       refreshReason: "Finnhub did not return usable earnings data.",
+      earningsCalendarAvailable: false,
+      transcriptsAvailable: false,
       provider: "Unavailable",
       message: error instanceof Error ? error.message : "Finnhub earnings check failed.",
       updatedAt,

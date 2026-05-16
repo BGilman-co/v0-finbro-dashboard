@@ -294,7 +294,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
               Environment inputs
             </div>
             <div className="mt-3 rounded-lg bg-[#141414] p-3 text-xs leading-5 text-[#A7A7A7]">
-              Add `FINNHUB_API_KEY` to `.env.local`. Add `SEC_USER_AGENT` when you want a custom SEC-compliant request identity. The browser only receives modeled output, not the raw key.
+              `FINNHUB_API_KEY` is read from `.env.local` by server routes. Add `SEC_USER_AGENT` when you want a custom SEC-compliant request identity. The browser only receives modeled output, not the raw key.
             </div>
             <div className="mt-3 rounded-lg border border-[#1F1F1F] p-3">
               <div className="text-xs uppercase tracking-wide text-[#919191]">Active company</div>
@@ -344,11 +344,11 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
               <div className="mt-1 text-[#E7E7E7]">{earningsStatus?.updatedAt ? new Date(earningsStatus.updatedAt).toLocaleString() : "Waiting for Finnhub"}</div>
             </div>
             <div className="rounded-lg bg-black/40 p-3">
-              <div className="text-[#919191]">Calendar events</div>
+              <div className="text-[#919191]">Calendar events {earningsStatus?.earningsCalendarAvailable ? "" : "(blocked)"}</div>
               <div className="mt-1 text-[#E7E7E7]">{earningsStatus?.earningsEvents.length ?? 0} in the +/- 14 day window</div>
             </div>
             <div className="rounded-lg bg-black/40 p-3">
-              <div className="text-[#919191]">Call transcripts</div>
+              <div className="text-[#919191]">Call transcripts {earningsStatus?.transcriptsAvailable ? "" : "(blocked)"}</div>
               <div className="mt-1 text-[#E7E7E7]">{earningsStatus?.transcripts.length ?? 0} recent metadata records</div>
             </div>
           </div>
