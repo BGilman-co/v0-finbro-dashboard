@@ -17,6 +17,7 @@ type ActiveNote = {
   rowLabel: string
   year: number
   note: ForecastCellNote
+  movement: string
 }
 
 function formatAmount(value: number, rowId: string) {
@@ -64,11 +65,35 @@ function noteText(note?: ForecastCellNote) {
 
   return [
     `Assumption: ${note.assumption}`,
-    `Historical support: ${note.historicalSupport}`,
-    `SEC filing evidence: ${note.secEvidence}`,
-    `Finnhub transcript evidence: ${note.transcriptEvidence}`,
+    `Math: ${note.formula}`,
+    `Evidence: ${note.citations.join(" ")}`,
     `Confidence: ${note.confidence}`,
   ].join("\n")
+}
+
+function compactText(value: string, maxLength = 160) {
+  const compact = value.replace(/\s+/g, " ").trim()
+
+  if (compact.length <= maxLength) {
+    return compact
+  }
+
+  return `${compact.slice(0, maxLength - 1).trim()}...`
+}
+
+function movementText(rowLabel: string, current: number, previous: number) {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) {
+    return "No prior-year bridge available."
+  }
+
+  const change = current - previous
+  const direction = change > 0 ? "increased" : change < 0 ? "decreased" : "was flat"
+  const amount = Math.abs(change)
+  const percent = previous === 0 ? null : (change / Math.abs(previous)) * 100
+  const formattedAmount = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(amount)
+  const formattedPercent = percent === null ? "" : ` / ${Math.abs(percent).toFixed(1)}%`
+
+  return `${rowLabel} ${direction} ${formattedAmount}${formattedPercent} vs prior year.`
 }
 
 function StatementTable({
@@ -134,7 +159,8 @@ function StatementTable({
                         onClick={() => {
                           const note = row.notes?.[index]
                           if (note) {
-                            onOpenNote({ rowLabel: row.label, year, note })
+                            const previous = index === 0 ? row.historical[row.historical.length - 1] : row.projected[index - 1]
+                            onOpenNote({ rowLabel: row.label, year, note, movement: movementText(row.label, row.projected[index], previous) })
                           }
                         }}
                       >
@@ -158,45 +184,53 @@ function NoteDialog({ activeNote, onClose }: { activeNote: ActiveNote | null; on
     return null
   }
 
-  const sections = [
-    { label: "Assumption", value: activeNote.note.assumption },
-    { label: "Historical support", value: activeNote.note.historicalSupport },
-    { label: "SEC filing evidence", value: activeNote.note.secEvidence },
-    { label: "Finnhub transcript evidence", value: activeNote.note.transcriptEvidence },
-  ]
+  const citations = activeNote.note.citations.length
+    ? activeNote.note.citations
+    : [activeNote.note.secEvidence, activeNote.note.transcriptEvidence].filter(Boolean)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 py-6 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true" aria-labelledby="forecast-note-title">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[#2A2A2A] bg-[#0D0D0D] shadow-2xl">
-        <div className="border-b border-[#1F1F1F] px-5 py-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-[#D9F99D]">{activeNote.year} projection note</p>
-              <h2 id="forecast-note-title" className="mt-1 text-lg font-semibold text-white">
+    <div className="fixed inset-y-0 right-0 z-50 flex w-full justify-end bg-black/20 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-labelledby="forecast-note-title">
+      <div className="h-full w-full max-w-[360px] overflow-hidden border-l border-[#2A2A2A] bg-[#0D0D0D] shadow-2xl">
+        <div className="border-b border-[#1F1F1F] px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-[#D9F99D]">{activeNote.year} note</p>
+              <h2 id="forecast-note-title" className="truncate text-base font-semibold text-white">
                 {activeNote.rowLabel}
               </h2>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-[#2A2A2A] px-3 py-1.5 text-sm text-[#C9C9C9] transition-colors hover:bg-[#171717] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9F99D]"
-            >
+            <button type="button" onClick={onClose} className="h-8 rounded-md border border-[#2A2A2A] px-2 text-xs text-[#C9C9C9] hover:bg-[#171717] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9F99D]">
               Close
             </button>
           </div>
-        </div>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
-          <div className="mb-4 inline-flex rounded-md bg-[#171717] px-3 py-1.5 text-xs text-[#A7A7A7]">
+          <div className="mt-3 inline-flex rounded-md bg-[#171717] px-2 py-1 text-[11px] text-[#A7A7A7]">
             Confidence: <span className="ml-1 text-[#E7E7E7]">{activeNote.note.confidence}</span>
           </div>
-          <div className="grid gap-3">
-            {sections.map((section) => (
-              <section key={section.label} className="rounded-xl border border-[#1F1F1F] bg-black/30 p-4">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-[#919191]">{section.label}</h3>
-                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#E7E7E7]">{section.value}</p>
-              </section>
-            ))}
-          </div>
+        </div>
+        <div className="h-[calc(100%-92px)] overflow-y-auto px-4 py-3">
+          <section className="rounded-lg border border-[#1F1F1F] bg-black/30 p-3">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-[#919191]">Math</h3>
+            <p className="mt-1 text-sm leading-5 text-[#E7E7E7]">{activeNote.movement}</p>
+            <p className="mt-2 font-mono text-xs leading-5 text-[#D9F99D]">{compactText(activeNote.note.formula, 120)}</p>
+          </section>
+
+          <section className="mt-3 rounded-lg border border-[#1F1F1F] bg-black/30 p-3">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-[#919191]">Key figures</h3>
+            <ul className="mt-2 space-y-1 text-sm leading-5 text-[#E7E7E7]">
+              {activeNote.note.figures.map((figure) => (
+                <li key={figure}>{compactText(figure, 90)}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="mt-3 rounded-lg border border-[#1F1F1F] bg-black/30 p-3">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-[#919191]">Source snippets</h3>
+            <ul className="mt-2 space-y-2 text-xs leading-5 text-[#C9C9C9]">
+              {citations.slice(0, 3).map((citation) => (
+                <li key={citation}>{compactText(citation, 155)}</li>
+              ))}
+            </ul>
+          </section>
         </div>
       </div>
     </div>

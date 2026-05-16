@@ -68,6 +68,10 @@ export type ForecastCellNote = {
   historicalSupport: string
   secEvidence: string
   transcriptEvidence: string
+  formula: string
+  figures: string[]
+  citations: string[]
+  movement: string
   confidence: ForecastAssumption["confidence"]
 }
 
@@ -402,16 +406,44 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
 function note(year: number, assumption: ForecastAssumption): ForecastCellNote {
   return {
     year,
-    assumption: `${assumption.assumptionUsed} Source: ${assumption.sourceDocument}.`,
-    historicalSupport: "Historical values are reported SEC filing values in USD millions; projected values are formula-driven from the selected scenario.",
+    assumption: assumption.assumptionUsed,
+    historicalSupport: "Historical: SEC reported values. Forecast: selected scenario formulas.",
     secEvidence: assumption.secEvidence,
     transcriptEvidence: assumption.transcriptEvidence,
+    formula: assumption.value,
+    figures: [assumption.affectedLineItem, assumption.projectionPeriod],
+    citations: [assumption.disclosure, assumption.transcriptEvidence].filter(Boolean),
+    movement: "Compared with the prior year, this projected amount moves according to the linked driver above: revenue growth, margin path, cash-conversion rate, capex intensity, financing schedule, or share-count change.",
     confidence: assumption.confidence,
   }
 }
 
-function notes(assumption: ForecastAssumption) {
-  return projectedYears.map((year) => note(year, assumption))
+function movementNote(current: number, previous: number, rowLabel: string, assumption: ForecastAssumption) {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) {
+    return "No year-over-year bridge is shown because one side of the comparison is unavailable."
+  }
+
+  const change = current - previous
+  const percent = previous === 0 ? null : (change / Math.abs(previous)) * 100
+  const direction = change > 0 ? "increased" : change < 0 ? "decreased" : "was flat"
+  const amount = Math.round(Math.abs(change)).toLocaleString("en-US")
+  const percentText = percent === null ? "" : ` (${Math.abs(percent).toFixed(1)}%)`
+
+  return `${rowLabel} ${direction} by ${amount}${percentText} vs prior year because ${assumption.assumptionUsed.toLowerCase()}`
+}
+
+function notes(assumption: ForecastAssumption, projectedValues?: number[], historicalValues?: number[], rowLabel = "This line") {
+  return projectedYears.map((year, index) => {
+    const cellNote = note(year, assumption)
+    const previous = index === 0 ? historicalValues?.[historicalValues.length - 1] : projectedValues?.[index - 1]
+    const current = projectedValues?.[index]
+
+    if (current !== undefined && previous !== undefined) {
+      cellNote.movement = movementNote(current, previous, rowLabel, assumption)
+    }
+
+    return cellNote
+  })
 }
 
 function projectNetflixData(scenario: ForecastScenario): ModelYearData[] {
@@ -658,20 +690,20 @@ function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelR
       years,
       projectedYears,
       lineItems: [
-        { id: "assumption-revenue-growth", label: "Assumption: revenue growth", historical: years.map(() => 0), projected: selectedScenario.revenueGrowth.map((rate) => roundOne(rate * 100)), formula: "Management 2026 guide, then scenario deceleration", notes: notes(revenueAssumption) },
-        { id: "revenue", label: "Revenue", historical: values("revenue", netflixHistorical), projected: values("revenue", projected), formula: "Prior-year revenue x (1 + revenue growth)", notes: notes(revenueAssumption) },
-        { id: "cost-of-revenue", label: "Cost of revenue", historical: values("costOfRevenue", netflixHistorical), projected: values("costOfRevenue", projected), formula: "Revenue x cost-of-revenue ratio", notes: notes(marginAssumption) },
-        { id: "gross-profit", label: "Gross profit", historical: values("grossProfit", netflixHistorical), projected: values("grossProfit", projected), formula: "Revenue + cost of revenue", notes: notes(marginAssumption) },
-        { id: "operating-expense", label: "Operating expenses", historical: values("operatingExpense", netflixHistorical), projected: values("operatingExpense", projected), formula: "Operating income - gross profit", notes: notes(marginAssumption) },
-        { id: "operating-income", label: "Operating income", historical: values("operatingIncome", netflixHistorical), projected: values("operatingIncome", projected), formula: "Revenue x operating margin", notes: notes(marginAssumption) },
-        { id: "interest-income", label: "Interest income", historical: values("interestIncome", netflixHistorical), projected: values("interestIncome", projected), formula: "Beginning cash x normalized yield", notes: notes(debtAssumption) },
-        { id: "interest-expense", label: "Interest expense", historical: values("interestExpense", netflixHistorical), projected: values("interestExpense", projected), formula: "Beginning debt x normalized debt cost", notes: notes(debtAssumption) },
-        { id: "other-income-expense", label: "Other income / (expense)", historical: values("otherIncomeExpense", netflixHistorical), projected: values("otherIncomeExpense", projected), formula: "Historical ratio to revenue unless disclosed otherwise", notes: notes(debtAssumption) },
-        { id: "pretax-income", label: "Pretax income", historical: values("pretaxIncome", netflixHistorical), projected: values("pretaxIncome", projected), formula: "Operating income + interest income + interest expense + other income / expense", notes: notes(taxAssumption) },
-        { id: "tax-expense", label: "Tax expense", historical: values("taxExpense", netflixHistorical), projected: values("taxExpense", projected), formula: "Pretax income x selected tax rate", notes: notes(taxAssumption) },
-        { id: "net-income", label: "Net income", historical: values("netIncome", netflixHistorical), projected: values("netIncome", projected), formula: "Pretax income + tax expense", notes: notes(taxAssumption) },
-        { id: "diluted-shares", label: "Diluted shares", historical: valuesOne("dilutedShares", netflixHistorical), projected: valuesOne("dilutedShares", projected), formula: "Prior-year diluted shares x scenario share-count change", notes: notes(buybackAssumption) },
-        { id: "diluted-eps", label: "Diluted EPS", historical: valuesOne("dilutedEps", netflixHistorical), projected: valuesOne("dilutedEps", projected), formula: "Net income / diluted shares", notes: notes(buybackAssumption) },
+        { id: "assumption-revenue-growth", label: "Assumption: revenue growth", historical: years.map(() => 0), projected: selectedScenario.revenueGrowth.map((rate) => roundOne(rate * 100)), formula: "Management 2026 guide, then scenario deceleration", notes: notes(revenueAssumption, undefined, undefined, "Revenue") },
+        { id: "revenue", label: "Revenue", historical: values("revenue", netflixHistorical), projected: values("revenue", projected), formula: "Prior-year revenue x (1 + revenue growth)", notes: notes(revenueAssumption, undefined, undefined, "Revenue") },
+        { id: "cost-of-revenue", label: "Cost of revenue", historical: values("costOfRevenue", netflixHistorical), projected: values("costOfRevenue", projected), formula: "Revenue x cost-of-revenue ratio", notes: notes(marginAssumption, undefined, undefined, "Margin line") },
+        { id: "gross-profit", label: "Gross profit", historical: values("grossProfit", netflixHistorical), projected: values("grossProfit", projected), formula: "Revenue + cost of revenue", notes: notes(marginAssumption, undefined, undefined, "Margin line") },
+        { id: "operating-expense", label: "Operating expenses", historical: values("operatingExpense", netflixHistorical), projected: values("operatingExpense", projected), formula: "Operating income - gross profit", notes: notes(marginAssumption, undefined, undefined, "Margin line") },
+        { id: "operating-income", label: "Operating income", historical: values("operatingIncome", netflixHistorical), projected: values("operatingIncome", projected), formula: "Revenue x operating margin", notes: notes(marginAssumption, undefined, undefined, "Margin line") },
+        { id: "interest-income", label: "Interest income", historical: values("interestIncome", netflixHistorical), projected: values("interestIncome", projected), formula: "Beginning cash x normalized yield", notes: notes(debtAssumption, undefined, undefined, "Debt / interest line") },
+        { id: "interest-expense", label: "Interest expense", historical: values("interestExpense", netflixHistorical), projected: values("interestExpense", projected), formula: "Beginning debt x normalized debt cost", notes: notes(debtAssumption, undefined, undefined, "Debt / interest line") },
+        { id: "other-income-expense", label: "Other income / (expense)", historical: values("otherIncomeExpense", netflixHistorical), projected: values("otherIncomeExpense", projected), formula: "Historical ratio to revenue unless disclosed otherwise", notes: notes(debtAssumption, undefined, undefined, "Debt / interest line") },
+        { id: "pretax-income", label: "Pretax income", historical: values("pretaxIncome", netflixHistorical), projected: values("pretaxIncome", projected), formula: "Operating income + interest income + interest expense + other income / expense", notes: notes(taxAssumption, undefined, undefined, "Tax line") },
+        { id: "tax-expense", label: "Tax expense", historical: values("taxExpense", netflixHistorical), projected: values("taxExpense", projected), formula: "Pretax income x selected tax rate", notes: notes(taxAssumption, undefined, undefined, "Tax line") },
+        { id: "net-income", label: "Net income", historical: values("netIncome", netflixHistorical), projected: values("netIncome", projected), formula: "Pretax income + tax expense", notes: notes(taxAssumption, undefined, undefined, "Tax line") },
+        { id: "diluted-shares", label: "Diluted shares", historical: valuesOne("dilutedShares", netflixHistorical), projected: valuesOne("dilutedShares", projected), formula: "Prior-year diluted shares x scenario share-count change", notes: notes(buybackAssumption, undefined, undefined, "Buyback / share line") },
+        { id: "diluted-eps", label: "Diluted EPS", historical: valuesOne("dilutedEps", netflixHistorical), projected: valuesOne("dilutedEps", projected), formula: "Net income / diluted shares", notes: notes(buybackAssumption, undefined, undefined, "Buyback / share line") },
       ],
     },
     cashFlowStatement: {
@@ -679,25 +711,25 @@ function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelR
       years,
       projectedYears,
       lineItems: [
-        { id: "net-income", label: "Net income", historical: values("netIncome", netflixHistorical), projected: values("netIncome", projected), formula: "Linked from income statement", notes: notes(taxAssumption) },
-        { id: "depreciation-amortization", label: "Depreciation & amortization", historical: values("depreciationAmortization", netflixHistorical), projected: values("depreciationAmortization", projected), formula: "Revenue x historical D&A ratio", notes: notes(cashFlowAssumption) },
-        { id: "share-based-compensation", label: "Share-based compensation", historical: values("shareBasedCompensation", netflixHistorical), projected: values("shareBasedCompensation", projected), formula: "Revenue x historical SBC ratio", notes: notes(cashFlowAssumption) },
-        { id: "working-capital-other", label: "Working capital and other operating items", historical: values("workingCapitalAndOther", netflixHistorical), projected: values("workingCapitalAndOther", projected), formula: "CFO - net income - D&A - SBC", notes: notes(cashFlowAssumption) },
-        { id: "operating-cash-flow", label: "Net cash from operating activities", historical: values("operatingCashFlow", netflixHistorical), projected: values("operatingCashFlow", projected), formula: "Net income + non-cash items + working capital and other", notes: notes(cashFlowAssumption) },
-        { id: "capital-expenditures", label: "Capital expenditures", historical: values("capitalExpenditures", netflixHistorical), projected: values("capitalExpenditures", projected), formula: "Revenue x capex intensity", notes: notes(capexAssumption) },
-        { id: "free-cash-flow", label: "Free cash flow", historical: values("freeCashFlow", netflixHistorical), projected: values("freeCashFlow", projected), formula: "Operating cash flow + capital expenditures", notes: notes(capexAssumption) },
-        { id: "other-investing", label: "Other investing activity", historical: values("otherInvesting", netflixHistorical), projected: values("otherInvesting", projected), formula: "Historical ratio to revenue unless disclosed otherwise", notes: notes(capexAssumption) },
-        { id: "investing-cash-flow", label: "Net cash from investing activities", historical: values("investingCashFlow", netflixHistorical), projected: values("investingCashFlow", projected), formula: "Capital expenditures + other investing activity", notes: notes(capexAssumption) },
-        { id: "debt-issuance", label: "Debt issuance", historical: values("debtIssuance", netflixHistorical), projected: values("debtIssuance", projected), formula: "Known financing plan; zero without disclosed issuance", notes: notes(debtAssumption) },
-        { id: "debt-repayment", label: "Debt repayments and maturities", historical: values("debtRepayment", netflixHistorical), projected: values("debtRepayment", projected), formula: "Debt maturity schedule and repayment assumption", notes: notes(debtAssumption) },
-        { id: "share-repurchases", label: "Share repurchases", historical: values("shareRepurchases", netflixHistorical), projected: values("shareRepurchases", projected), formula: "Free cash flow x buyback allocation", notes: notes(buybackAssumption) },
-        { id: "other-financing", label: "Other financing activity", historical: values("otherFinancing", netflixHistorical), projected: values("otherFinancing", projected), formula: "Residual financing cash flow items", notes: notes(buybackAssumption) },
-        { id: "financing-cash-flow", label: "Net cash from financing activities", historical: values("financingCashFlow", netflixHistorical), projected: values("financingCashFlow", projected), formula: "Debt issuance + debt repayment + buybacks + other financing", notes: notes(buybackAssumption) },
-        { id: "foreign-exchange-cash", label: "Effect of foreign exchange on cash", historical: values("foreignExchangeCash", netflixHistorical), projected: values("foreignExchangeCash", projected), formula: "Historical ratio to revenue", notes: notes(cashFlowAssumption) },
-        { id: "net-change-cash", label: "Net change in cash", historical: values("netChangeInCash", netflixHistorical), projected: values("netChangeInCash", projected), formula: "CFO + CFI + CFF + FX cash effect", notes: notes(cashFlowAssumption) },
-        { id: "beginning-cash", label: "Beginning cash", historical: values("beginningCash", netflixHistorical), projected: values("beginningCash", projected), formula: "Prior-year ending cash", notes: notes(cashFlowAssumption) },
-        { id: "ending-cash", label: "Ending cash", historical: values("endingCash", netflixHistorical), projected: values("endingCash", projected), formula: "Beginning cash + net change in cash", notes: notes(cashFlowAssumption) },
-        { id: "ending-debt", label: "Ending debt", historical: values("debtBalance", netflixHistorical), projected: values("debtBalance", projected), formula: "Beginning debt + issuance + repayment", notes: notes(debtAssumption) },
+        { id: "net-income", label: "Net income", historical: values("netIncome", netflixHistorical), projected: values("netIncome", projected), formula: "Linked from income statement", notes: notes(taxAssumption, undefined, undefined, "Tax line") },
+        { id: "depreciation-amortization", label: "Depreciation & amortization", historical: values("depreciationAmortization", netflixHistorical), projected: values("depreciationAmortization", projected), formula: "Revenue x historical D&A ratio", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "share-based-compensation", label: "Share-based compensation", historical: values("shareBasedCompensation", netflixHistorical), projected: values("shareBasedCompensation", projected), formula: "Revenue x historical SBC ratio", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "working-capital-other", label: "Working capital and other operating items", historical: values("workingCapitalAndOther", netflixHistorical), projected: values("workingCapitalAndOther", projected), formula: "CFO - net income - D&A - SBC", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "operating-cash-flow", label: "Net cash from operating activities", historical: values("operatingCashFlow", netflixHistorical), projected: values("operatingCashFlow", projected), formula: "Net income + non-cash items + working capital and other", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "capital-expenditures", label: "Capital expenditures", historical: values("capitalExpenditures", netflixHistorical), projected: values("capitalExpenditures", projected), formula: "Revenue x capex intensity", notes: notes(capexAssumption, undefined, undefined, "Capex / investing line") },
+        { id: "free-cash-flow", label: "Free cash flow", historical: values("freeCashFlow", netflixHistorical), projected: values("freeCashFlow", projected), formula: "Operating cash flow + capital expenditures", notes: notes(capexAssumption, undefined, undefined, "Capex / investing line") },
+        { id: "other-investing", label: "Other investing activity", historical: values("otherInvesting", netflixHistorical), projected: values("otherInvesting", projected), formula: "Historical ratio to revenue unless disclosed otherwise", notes: notes(capexAssumption, undefined, undefined, "Capex / investing line") },
+        { id: "investing-cash-flow", label: "Net cash from investing activities", historical: values("investingCashFlow", netflixHistorical), projected: values("investingCashFlow", projected), formula: "Capital expenditures + other investing activity", notes: notes(capexAssumption, undefined, undefined, "Capex / investing line") },
+        { id: "debt-issuance", label: "Debt issuance", historical: values("debtIssuance", netflixHistorical), projected: values("debtIssuance", projected), formula: "Known financing plan; zero without disclosed issuance", notes: notes(debtAssumption, undefined, undefined, "Debt / interest line") },
+        { id: "debt-repayment", label: "Debt repayments and maturities", historical: values("debtRepayment", netflixHistorical), projected: values("debtRepayment", projected), formula: "Debt maturity schedule and repayment assumption", notes: notes(debtAssumption, undefined, undefined, "Debt / interest line") },
+        { id: "share-repurchases", label: "Share repurchases", historical: values("shareRepurchases", netflixHistorical), projected: values("shareRepurchases", projected), formula: "Free cash flow x buyback allocation", notes: notes(buybackAssumption, undefined, undefined, "Buyback / share line") },
+        { id: "other-financing", label: "Other financing activity", historical: values("otherFinancing", netflixHistorical), projected: values("otherFinancing", projected), formula: "Residual financing cash flow items", notes: notes(buybackAssumption, undefined, undefined, "Buyback / share line") },
+        { id: "financing-cash-flow", label: "Net cash from financing activities", historical: values("financingCashFlow", netflixHistorical), projected: values("financingCashFlow", projected), formula: "Debt issuance + debt repayment + buybacks + other financing", notes: notes(buybackAssumption, undefined, undefined, "Buyback / share line") },
+        { id: "foreign-exchange-cash", label: "Effect of foreign exchange on cash", historical: values("foreignExchangeCash", netflixHistorical), projected: values("foreignExchangeCash", projected), formula: "Historical ratio to revenue", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "net-change-cash", label: "Net change in cash", historical: values("netChangeInCash", netflixHistorical), projected: values("netChangeInCash", projected), formula: "CFO + CFI + CFF + FX cash effect", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "beginning-cash", label: "Beginning cash", historical: values("beginningCash", netflixHistorical), projected: values("beginningCash", projected), formula: "Prior-year ending cash", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "ending-cash", label: "Ending cash", historical: values("endingCash", netflixHistorical), projected: values("endingCash", projected), formula: "Beginning cash + net change in cash", notes: notes(cashFlowAssumption, undefined, undefined, "Cash flow line") },
+        { id: "ending-debt", label: "Ending debt", historical: values("debtBalance", netflixHistorical), projected: values("debtBalance", projected), formula: "Beginning debt + issuance + repayment", notes: notes(debtAssumption, undefined, undefined, "Debt / interest line") },
       ],
     },
     validationStatement: {
