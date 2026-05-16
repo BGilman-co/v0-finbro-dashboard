@@ -30,10 +30,13 @@ The typed helper defines `Company`, `Filing`, `XBRLFact`, `FinancialStatement`, 
 - Added `CASH FLOW MODEL` above `RESEARCHER` in desktop and mobile navigation.
 - Added stock search, select-all, environment input guidance, ticker selection, SEC source links, two tables, projected-cell notes, and CSV/JSON export.
 - Added fallback XBRL mappings for revenue, margins, interest, tax, working capital, capex, debt, leases, financing obligations, and FX.
+- Added Finnhub earnings calendar monitoring:
+  - `/api/earnings/[symbol]` checks the selected ticker's earnings calendar and transcript metadata.
+  - `/api/cron/finnhub-earnings` runs from Vercel Cron hourly and checks upcoming/recent earnings releases.
+  - The modeler polls the selected ticker every 30 minutes while open and displays a refresh signal when a release or recent call metadata is available.
 
 ## Follow-Ups
 
-- Add a secure server-side Finnhub proxy that reads `FINNHUB_API_KEY` from the environment.
-- Replace preview model values with live SEC companyfacts normalization and Finnhub transcript scanning.
+- Replace preview model values with live SEC companyfacts normalization and Finnhub transcript scanning when the refresh signal is active.
 - Add an XLSX writer that preserves comments directly in Excel.
 - Add formal unit tests once the repo has a test runner configured.

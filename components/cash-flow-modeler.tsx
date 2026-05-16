@@ -1,8 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Download, FileKey2, SquareArrowOutUpRight } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { CalendarClock, Download, FileKey2, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
 import { buildPreviewModel, type FinancialStatement, type ForecastCellNote } from "@/lib/cash-flow-model"
+import { loadEarningsStatus } from "@/lib/static-market-data"
+import type { FinnhubEarningsPayload } from "@/lib/finnhub-data"
 import type { Security } from "@/lib/market-types"
 
 type CashFlowModelerProps = {
@@ -138,6 +140,8 @@ function statementToCsv(statement: FinancialStatement) {
 export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: CashFlowModelerProps) {
   const [tickerQuery, setTickerQuery] = useState(selectedSymbol)
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([selectedSymbol])
+  const [earningsStatus, setEarningsStatus] = useState<FinnhubEarningsPayload | null>(null)
+  const [isCheckingEarnings, setIsCheckingEarnings] = useState(false)
 
   const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol) ?? securities[0]
   const model = useMemo(
@@ -157,6 +161,40 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
     setSelectedSymbols((current) => (current.includes(symbol) ? current.filter((item) => item !== symbol) : [...current, symbol]))
     onSymbolChange(symbol)
   }
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function refreshEarningsStatus() {
+      const symbol = selectedSecurity?.symbol ?? selectedSymbol
+
+      if (!symbol) {
+        return
+      }
+
+      setIsCheckingEarnings(true)
+
+      try {
+        const payload = await loadEarningsStatus(symbol)
+
+        if (isMounted) {
+          setEarningsStatus(payload)
+        }
+      } finally {
+        if (isMounted) {
+          setIsCheckingEarnings(false)
+        }
+      }
+    }
+
+    refreshEarningsStatus()
+    const interval = window.setInterval(refreshEarningsStatus, 30 * 60 * 1000)
+
+    return () => {
+      isMounted = false
+      window.clearInterval(interval)
+    }
+  }, [selectedSecurity?.symbol, selectedSymbol])
 
   const exportModel = () => {
     const prefix = `${selectedSecurity?.symbol ?? "model"}-sec-finnhub-model`
@@ -276,6 +314,49 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
           <a className="inline-flex items-center gap-2 rounded-lg bg-[#141414] px-3 py-2 hover:text-white" href={selectedSecurity?.cik ? `https://data.sec.gov/api/xbrl/companyfacts/CIK${selectedSecurity.cik.padStart(10, "0")}.json` : "https://data.sec.gov/api/xbrl/companyfacts/"} target="_blank" rel="noreferrer">
             Company facts <SquareArrowOutUpRight className="h-3 w-3" />
           </a>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-[#1F1F1F] bg-[#111111] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <CalendarClock className="mt-0.5 h-5 w-5 text-[#D9F99D]" />
+              <div>
+                <div className="text-sm font-medium text-white">Automatic earnings and call refresh</div>
+                <p className="mt-1 text-xs leading-5 text-[#A7A7A7]">
+                  The app checks Finnhub’s earnings calendar for this ticker every 30 minutes while the page is open. Vercel also calls the calendar monitor hourly so newly published earnings releases and call transcript metadata can trigger a model refresh path.
+                </p>
+              </div>
+            </div>
+            <div className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs ${earningsStatus?.shouldRefreshModel ? "bg-[#253017] text-[#D9F99D]" : "bg-[#171717] text-[#A7A7A7]"}`}>
+              <RefreshCw className={`h-3.5 w-3.5 ${isCheckingEarnings ? "animate-spin" : ""}`} />
+              {earningsStatus?.provider === "Unavailable"
+                ? "Calendar unavailable"
+                : earningsStatus?.shouldRefreshModel
+                  ? "Refresh signal active"
+                  : isCheckingEarnings
+                    ? "Checking calendar"
+                    : "Calendar watch active"}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 text-xs text-[#A7A7A7] md:grid-cols-3">
+            <div className="rounded-lg bg-black/40 p-3">
+              <div className="text-[#919191]">Last check</div>
+              <div className="mt-1 text-[#E7E7E7]">{earningsStatus?.updatedAt ? new Date(earningsStatus.updatedAt).toLocaleString() : "Waiting for Finnhub"}</div>
+            </div>
+            <div className="rounded-lg bg-black/40 p-3">
+              <div className="text-[#919191]">Calendar events</div>
+              <div className="mt-1 text-[#E7E7E7]">{earningsStatus?.earningsEvents.length ?? 0} in the +/- 14 day window</div>
+            </div>
+            <div className="rounded-lg bg-black/40 p-3">
+              <div className="text-[#919191]">Call transcripts</div>
+              <div className="mt-1 text-[#E7E7E7]">{earningsStatus?.transcripts.length ?? 0} recent metadata records</div>
+            </div>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-[#A7A7A7]">
+            {earningsStatus?.provider === "Unavailable"
+              ? earningsStatus.message
+              : earningsStatus?.refreshReason ?? "Add FINNHUB_API_KEY to .env.local to enable the calendar watch."}
+          </p>
         </div>
       </section>
 
