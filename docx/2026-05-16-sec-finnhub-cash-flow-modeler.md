@@ -43,7 +43,7 @@ The typed helper defines `Company`, `Filing`, `XBRLFact`, `FinancialStatement`, 
   - Diluted EPS: 2026E -3.9%, 2027E -3.3%.
 - Added Finnhub earnings calendar monitoring:
   - `/api/earnings/[symbol]` checks the selected ticker's earnings calendar and transcript metadata.
-  - `/api/cron/finnhub-earnings` runs from Vercel Cron hourly and checks upcoming/recent earnings releases.
+  - `/api/cron/finnhub-earnings` runs from Vercel Cron daily and checks upcoming/recent earnings releases. The cadence matches the current Vercel Hobby account limit.
   - The modeler polls the selected ticker every 30 minutes while open and displays a refresh signal when a release or recent call metadata is available.
 
 ## Follow-Ups
