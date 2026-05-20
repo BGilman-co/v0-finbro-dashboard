@@ -1,6 +1,7 @@
 "use client"
 
 import type { FilingsPayload, MarketPayload, PriceHistoryPayload, PriceHistoryRange, UniversePayload } from "@/lib/market-types"
+import type { FinnhubEarningsPayload } from "@/lib/finnhub-data"
 
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
 
@@ -42,4 +43,8 @@ export async function loadPriceHistory(symbol: string, range: PriceHistoryRange)
 
 export async function loadFilings(symbol: string): Promise<FilingsPayload> {
   return fetchJson<FilingsPayload>(`/api/filings/${encodeURIComponent(symbol)}`)
+}
+
+export async function loadEarningsStatus(symbol: string): Promise<FinnhubEarningsPayload> {
+  return fetchJson<FinnhubEarningsPayload>(`/api/earnings/${encodeURIComponent(symbol)}`)
 }
