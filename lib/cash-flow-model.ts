@@ -1,3 +1,5 @@
+import type { FinancialSentimentSummary } from "@/lib/financial-sentiment"
+
 export type Company = {
   ticker: string
   name: string
@@ -249,6 +251,45 @@ const scenarios: ForecastScenario[] = [
   },
 ]
 
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(Math.max(value, minimum), maximum)
+}
+
+function hasFinbertSignal(sentiment?: FinancialSentimentSummary) {
+  return sentiment?.provider === "ProsusAI/finbert" && sentiment.textCount > 0
+}
+
+function sentimentWeight(sentiment?: FinancialSentimentSummary) {
+  return hasFinbertSignal(sentiment) ? Math.min((sentiment?.textCount ?? 0) / 8, 1) : 0
+}
+
+function sentimentRevenueAdjustment(sentiment?: FinancialSentimentSummary) {
+  return clamp((sentiment?.score ?? 0) * sentimentWeight(sentiment) * 0.0075, -0.0075, 0.0075)
+}
+
+function sentimentMarginAdjustment(sentiment?: FinancialSentimentSummary) {
+  return clamp((sentiment?.score ?? 0) * sentimentWeight(sentiment) * 0.003, -0.003, 0.003)
+}
+
+function applySentimentOverlay(scenario: ForecastScenario, sentiment?: FinancialSentimentSummary): ForecastScenario {
+  const revenueAdjustment = sentimentRevenueAdjustment(sentiment)
+  const marginAdjustment = sentimentMarginAdjustment(sentiment)
+
+  if (revenueAdjustment === 0 && marginAdjustment === 0) {
+    return scenario
+  }
+
+  return {
+    ...scenario,
+    revenueGrowth: scenario.revenueGrowth.map((rate, index) => rate + (index === 0 ? revenueAdjustment : index === 1 ? revenueAdjustment * 0.5 : 0)),
+    operatingMargin: scenario.operatingMargin.map((rate, index) => rate + (index <= 1 ? marginAdjustment : 0)),
+  }
+}
+
+function formatSentimentProbability(value?: number) {
+  return `${roundOne((value ?? 0) * 100)}%`
+}
+
 const netflixHistorical: ModelYearData[] = [
   makeHistoricalYear({ revenue: 29698, costOfRevenue: -17333, operatingIncome: 6195, interestExpense: -766, otherIncomeExpense: 411, taxExpense: -724, netIncome: 5116, dilutedShares: 4553.7, depreciationAmortization: 208, shareBasedCompensation: 403, operatingCashFlow: 393, capitalExpenditures: -525, investingCashFlow: -1340, debtIssuance: 0, debtRepayment: -500, shareRepurchases: -600, financingCashFlow: -1150, foreignExchangeCash: -87, beginningCash: 8239, endingCash: 6055, debtBalance: 14693 }),
   makeHistoricalYear({ revenue: 31616, costOfRevenue: -19168, operatingIncome: 5633, interestExpense: -706, otherIncomeExpense: 337, taxExpense: -772, netIncome: 4492, dilutedShares: 4512.9, depreciationAmortization: 337, shareBasedCompensation: 575, operatingCashFlow: 2026, capitalExpenditures: -408, investingCashFlow: -2076, debtIssuance: 0, debtRepayment: -700, shareRepurchases: 0, financingCashFlow: -664, foreignExchangeCash: -170, beginningCash: 6055, endingCash: 5171, debtBalance: 14353 }),
@@ -304,7 +345,11 @@ function makeAssumption(
   }
 }
 
-function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption[] {
+function buildNetflixAssumptions(scenario: ForecastScenario, sentiment?: FinancialSentimentSummary): ForecastAssumption[] {
+  const finbertSignalAvailable = hasFinbertSignal(sentiment)
+  const revenueAdjustment = sentimentRevenueAdjustment(sentiment)
+  const marginAdjustment = sentimentMarginAdjustment(sentiment)
+
   return [
     makeAssumption({
       id: "revenue-growth",
@@ -415,6 +460,32 @@ function buildNetflixAssumptions(scenario: ForecastScenario): ForecastAssumption
       assumptionUsed: "Compare model revenue and diluted EPS against the average of available conventional projections for 2026E and 2027E; 2028E-2030E are left blank until a reliable public consensus baseline is captured.",
       affectedLineItem: "Revenue, diluted EPS, validation checks",
       projectionPeriod: "2026E-2027E",
+    }),
+    makeAssumption({
+      id: "management-sentiment",
+      label: "ProsusAI FinBERT sentiment",
+      value: finbertSignalAvailable
+        ? `Score ${roundOne((sentiment?.score ?? 0) * 100)}; positive ${formatSentimentProbability(sentiment?.positive)}, neutral ${formatSentimentProbability(sentiment?.neutral)}, negative ${formatSentimentProbability(sentiment?.negative)}`
+        : "Waiting for Finnhub transcript text and Hugging Face inference credentials",
+      confidence: finbertSignalAvailable ? "Medium" : "Low",
+      sourceDocument: "Finnhub earnings-call transcript text analyzed with ProsusAI/finbert",
+      sourceUrl: "https://huggingface.co/ProsusAI/finbert",
+      disclosure: finbertSignalAvailable
+        ? `${sentiment?.message ?? "ProsusAI/finbert sentiment is available."} The score is bounded and used only as a near-term overlay.`
+        : "ProsusAI/finbert is a financial sentiment model that returns positive, negative, and neutral probabilities. Live scoring activates when transcript text and a Hugging Face token are available.",
+      transcriptEvidence: finbertSignalAvailable
+        ? `FinBERT text evidence: ${(sentiment?.evidence ?? []).join(" ")}`
+        : "No transcript sentiment evidence has been scored yet; explicit management guidance and SEC filings remain the controlling model inputs.",
+      assumptionUsed:
+        "FinBERT score = average positive probability minus average negative probability. The score can move year-one revenue growth by at most +/-75 bps and year-one operating margin by at most +/-30 bps; year two receives half the revenue overlay. Explicit guidance, SEC figures, and validation checks override tone.",
+      affectedLineItem: "Revenue growth, operating margin, forecast confidence",
+      projectionPeriod: "2026E-2027E",
+      keyFigures: [
+        `FinBERT label: ${sentiment?.label ?? "unavailable"}.`,
+        `Revenue overlay: ${roundOne(revenueAdjustment * 100)} percentage points in year one; ${roundOne(revenueAdjustment * 50)} percentage points in year two.`,
+        `Operating margin overlay: ${roundOne(marginAdjustment * 100)} percentage points in years one and two.`,
+        "Tone is treated as soft information, not a substitute for SEC line-item articulation or guidance.",
+      ],
     }),
   ]
 }
@@ -650,9 +721,10 @@ function buildConventionalProjectionStatement(projected: ModelYearData[], assump
   }
 }
 
-function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelResult {
-  const selectedScenario = scenarios.find((scenario) => scenario.name === scenarioName) ?? scenarios[0]
-  const assumptions = buildNetflixAssumptions(selectedScenario)
+function buildNetflixModel(company: Company, scenarioName: ScenarioName, sentiment?: FinancialSentimentSummary): ModelResult {
+  const selectedScenarioTemplate = scenarios.find((scenario) => scenario.name === scenarioName) ?? scenarios[0]
+  const selectedScenario = applySentimentOverlay(selectedScenarioTemplate, sentiment)
+  const assumptions = buildNetflixAssumptions(selectedScenario, sentiment)
   const revenueAssumption = assumptions[0]
   const marginAssumption = assumptions[1]
   const taxAssumption = assumptions[2]
@@ -661,6 +733,7 @@ function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelR
   const buybackAssumption = assumptions[5]
   const debtAssumption = assumptions[6]
   const conventionalAssumption = assumptions[7]
+  const sentimentAssumption = assumptions[8]
   const projected = projectNetflixData(selectedScenario)
   const checks = validationChecks(netflixHistorical, projected)
 
@@ -707,6 +780,7 @@ function buildNetflixModel(company: Company, scenarioName: ScenarioName): ModelR
       projectedYears,
       lineItems: [
         { id: "assumption-revenue-growth", label: "Assumption: revenue growth", historical: years.map(() => 0), projected: selectedScenario.revenueGrowth.map((rate) => roundOne(rate * 100)), formula: "Management 2026 guide, then scenario deceleration", notes: notes(revenueAssumption, undefined, undefined, "Revenue") },
+        { id: "assumption-finbert-sentiment", label: "Assumption: FinBERT sentiment score", historical: years.map(() => 0), projected: [sentiment?.score ?? 0, (sentiment?.score ?? 0) * 0.5, 0, 0, 0].map((score) => roundOne(score * 100)), formula: "ProsusAI/finbert positive probability minus negative probability; bounded overlay", notes: notes(sentimentAssumption, undefined, undefined, "Sentiment overlay") },
         { id: "revenue", label: "Revenue", historical: values("revenue", netflixHistorical), projected: values("revenue", projected), formula: "Prior-year revenue x (1 + revenue growth)", notes: notes(revenueAssumption, undefined, undefined, "Revenue") },
         { id: "cost-of-revenue", label: "Cost of revenue", historical: values("costOfRevenue", netflixHistorical), projected: values("costOfRevenue", projected), formula: "Revenue x cost-of-revenue ratio", notes: notes(marginAssumption, undefined, undefined, "Margin line") },
         { id: "gross-profit", label: "Gross profit", historical: values("grossProfit", netflixHistorical), projected: values("grossProfit", projected), formula: "Revenue + cost of revenue", notes: notes(marginAssumption, undefined, undefined, "Margin line") },
@@ -833,10 +907,14 @@ function withGenericCompanyEvidence(result: ModelResult, company: Company): Mode
   }
 }
 
-export function buildPreviewModel(company: Company, scenarioName: ScenarioName = "base"): ModelResult {
+export function buildPreviewModel(
+  company: Company,
+  scenarioName: ScenarioName = "base",
+  sentiment?: FinancialSentimentSummary,
+): ModelResult {
   if (company.ticker.toUpperCase() === "NFLX" || company.name.toLowerCase().includes("netflix")) {
-    return buildNetflixModel(company, scenarioName)
+    return buildNetflixModel(company, scenarioName, sentiment)
   }
 
-  return withGenericCompanyEvidence(buildNetflixModel(company, scenarioName), company)
+  return withGenericCompanyEvidence(buildNetflixModel(company, scenarioName, sentiment), company)
 }

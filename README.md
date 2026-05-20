@@ -52,13 +52,16 @@ Add private request credentials to `.env.local` instead of typing secrets into t
 
 ```bash
 FINNHUB_API_KEY=your_finnhub_key_here
+HUGGING_FACE_API_KEY=your_hugging_face_token_here
 SEC_USER_AGENT="Your Name your.email@example.com"
 CRON_SECRET=optional_random_secret_for_manual_cron_calls
 ```
 
-Do not use a `NEXT_PUBLIC_` prefix for `FINNHUB_API_KEY`; the key should stay server-side.
+Do not use a `NEXT_PUBLIC_` prefix for `FINNHUB_API_KEY` or `HUGGING_FACE_API_KEY`; both keys should stay server-side.
 
-The modeler checks `/api/earnings/[symbol]` while the page is open. That route reads Finnhub's earnings calendar for the selected company, checks earnings-call transcript metadata, and marks the model for refresh when an earnings release is near or a recent call transcript appears. Vercel also runs `/api/cron/finnhub-earnings` hourly from `vercel.json` so the deployed app keeps checking Finnhub around earnings releases.
+The modeler checks `/api/earnings/[symbol]` while the page is open. That route reads Finnhub's earnings calendar for the selected company, checks earnings-call transcript metadata, and runs ProsusAI/finBERT sentiment through Hugging Face when transcript text is available. Vercel also runs `/api/cron/finnhub-earnings` daily from `vercel.json` so the deployed app keeps checking Finnhub around earnings releases within the current Vercel Hobby cron limit.
+
+FinBERT sentiment is used as a bounded near-term overlay, not as a replacement for SEC filings, management guidance, or statement articulation. The score is positive probability minus negative probability; the model caps the resulting adjustment at +/-75 basis points of year-one revenue growth and +/-30 basis points of operating margin.
 
 The modeler is structured around these data objects: `Company`, `Filing`, `XBRLFact`, `FinancialStatement`, `StatementLineItem`, `Transcript`, `ForecastAssumption`, and `ForecastCellNote`. It includes SEC XBRL fallback mappings for income statement, cash flow statement, working capital, debt, leases, capex, share-based compensation, interest expense, financing obligations, and foreign exchange line items.
 

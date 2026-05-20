@@ -45,6 +45,26 @@ The typed helper defines `Company`, `Filing`, `XBRLFact`, `FinancialStatement`, 
   - `/api/earnings/[symbol]` checks the selected ticker's earnings calendar and transcript metadata.
   - `/api/cron/finnhub-earnings` runs from Vercel Cron daily and checks upcoming/recent earnings releases. The cadence matches the current Vercel Hobby account limit.
   - The modeler polls the selected ticker every 30 minutes while open and displays a refresh signal when a release or recent call metadata is available.
+- Added ProsusAI/finBERT sentiment:
+  - `lib/financial-sentiment.ts` calls the Hugging Face hosted `ProsusAI/finbert` model with server-side credentials only.
+  - Finnhub transcript text is scored as positive, negative, and neutral probabilities when transcript detail access is available.
+  - The score equals positive probability minus negative probability and is exported with the forecast notes.
+  - Sentiment is a bounded near-term overlay, capped at +/-75 bps of year-one revenue growth and +/-30 bps of operating margin; SEC filings and explicit guidance remain controlling.
+
+## Modeling Skill Upgrade
+
+The May 20 research pass added three modeling rules from the supplied PDFs:
+
+- No plugs and no circularity: forecast cash, debt, interest, and financing from explicit schedules and cash roll-forwards instead of using cash, debt, or equity as a balancing plug.
+- Chained line-item projection: forecast upstream drivers first, then condition downstream lines on them. The model order is revenue, operating costs and working capital, investing asset base and capex, financing/debt and interest, taxes, distributions, and articulated checks.
+- ML-informed feature discipline: emphasize variables that repeatedly matter for free cash flow and earnings response: earnings, accruals, working-capital components, capex, cash flows, dividends/buybacks, asset growth, and one-quarter and one-year historical comparisons.
+
+New cash-flow notes should therefore explain:
+
+- Which upstream driver created the projected movement.
+- Whether the line is directly forecast or articulated from other lines.
+- Which validation check would catch a broken cash roll-forward, debt schedule, EPS tie, or balance-sheet relation.
+- Whether FinBERT tone supports only a soft near-term overlay or whether explicit SEC/Finnhub guidance changes the actual driver.
 
 ## Follow-Ups
 

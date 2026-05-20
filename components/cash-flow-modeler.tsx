@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, Download, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
+import { BrainCircuit, CalendarClock, Download, RefreshCw, SquareArrowOutUpRight } from "lucide-react"
 import { buildPreviewModel, type FinancialStatement, type ForecastAssumption, type ForecastCellNote, type ScenarioName } from "@/lib/cash-flow-model"
 import { loadEarningsStatus } from "@/lib/static-market-data"
 import type { FinnhubEarningsPayload } from "@/lib/finnhub-data"
@@ -94,6 +94,14 @@ function movementText(rowLabel: string, current: number, previous: number) {
   const formattedPercent = percent === null ? "" : ` / ${Math.abs(percent).toFixed(1)}%`
 
   return `${rowLabel} ${direction} ${formattedAmount}${formattedPercent} vs prior year.`
+}
+
+function formatProbability(value?: number) {
+  return `${(((value ?? 0) * 100)).toFixed(1)}%`
+}
+
+function formatSentimentScore(value?: number) {
+  return ((value ?? 0) * 100).toFixed(1)
 }
 
 function StatementTable({
@@ -320,6 +328,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
   const [activeNote, setActiveNote] = useState<ActiveNote | null>(null)
 
   const selectedSecurity = securities.find((security) => security.symbol === selectedSymbol)
+  const sentiment = earningsStatus?.sentiment
   const activeCompany = selectedSecurity ?? {
     symbol: selectedSymbol,
     name: `${selectedSymbol} company`,
@@ -334,8 +343,15 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
         name: activeCompany.name,
         cik: activeCompany.cik,
         sector: activeCompany.sector,
-      }, selectedScenario),
-    [activeCompany.cik, activeCompany.name, activeCompany.sector, activeCompany.symbol, selectedScenario],
+      }, selectedScenario, sentiment),
+    [
+      activeCompany.cik,
+      activeCompany.name,
+      activeCompany.sector,
+      activeCompany.symbol,
+      selectedScenario,
+      sentiment,
+    ],
   )
   const filteredSecurities = securities
     .filter((security) => `${security.symbol} ${security.name}`.toLowerCase().includes(tickerQuery.toLowerCase()))
@@ -410,6 +426,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
       company: activeCompany,
       selectedSymbols,
       assumptions: model.assumptions,
+      sentiment: earningsStatus?.sentiment,
       scenario: model.selectedScenario,
       projectedCellNotes: [...model.incomeStatement.lineItems, ...model.cashFlowStatement.lineItems, ...model.conventionalProjectionStatement.lineItems].flatMap((row) =>
         (row.notes ?? []).map((note) => ({ row: row.label, ...note })),
@@ -428,7 +445,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
             <p className="text-xs font-medium uppercase tracking-wide text-[#D9F99D]">SEC EDGAR + Finnhub forecast model</p>
             <h1 className="mt-2 text-2xl font-semibold text-white">5-year cash flow projection builder</h1>
             <p className="mt-3 text-sm leading-6 text-[#A7A7A7]">
-              Select one ticker or the full stock universe, then build a normalized filing-and-transcript-backed model. Forecasts use linked formulas, source-backed assumptions, and validation checks across the income statement and cash flow statement.
+              Select one ticker or the full stock universe, then build a normalized filing-and-transcript-backed model. Forecasts use linked formulas, source-backed assumptions, ProsusAI/finBERT sentiment, and validation checks across the income statement and cash flow statement.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -546,7 +563,7 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
               <div>
                 <div className="text-sm font-medium text-white">Automatic earnings and call refresh</div>
                 <p className="mt-1 text-xs leading-5 text-[#A7A7A7]">
-                  The app checks Finnhub’s earnings calendar for this ticker every 30 minutes while the page is open. Vercel also calls the calendar monitor hourly so newly published earnings releases and call transcript metadata can trigger a model refresh path.
+                  The app checks Finnhub’s earnings calendar for this ticker every 30 minutes while the page is open. Vercel also calls the calendar monitor daily so newly published earnings releases and call transcript metadata can trigger a model refresh path.
                 </p>
               </div>
             </div>
@@ -573,6 +590,37 @@ export function CashFlowModeler({ securities, selectedSymbol, onSymbolChange }: 
             <div className="rounded-lg bg-black/40 p-3">
               <div className="text-[#919191]">Call transcripts {earningsStatus?.transcriptsAvailable ? "" : "(blocked)"}</div>
               <div className="mt-1 text-[#E7E7E7]">{earningsStatus?.transcripts.length ?? 0} recent metadata records</div>
+            </div>
+          </div>
+          <div className="mt-3 rounded-lg bg-black/40 p-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                <BrainCircuit className="mt-0.5 h-4 w-4 text-[#D9F99D]" />
+                <div>
+                  <div className="text-xs font-medium text-[#E7E7E7]">ProsusAI/finBERT sentiment</div>
+                  <div className="mt-1 text-xs leading-5 text-[#A7A7A7]">
+                    {earningsStatus?.sentiment?.message ?? "Waiting for transcript sentiment."}
+                  </div>
+                </div>
+              </div>
+              <div className="grid min-w-64 grid-cols-4 gap-2 text-center text-[11px] text-[#A7A7A7]">
+                <div className="rounded-md bg-[#111111] px-2 py-1">
+                  <div className="text-[#919191]">Tone</div>
+                  <div className="mt-0.5 capitalize text-[#E7E7E7]">{earningsStatus?.sentiment?.label ?? "pending"}</div>
+                </div>
+                <div className="rounded-md bg-[#111111] px-2 py-1">
+                  <div className="text-[#919191]">Score</div>
+                  <div className="mt-0.5 text-[#E7E7E7]">{formatSentimentScore(earningsStatus?.sentiment?.score)}</div>
+                </div>
+                <div className="rounded-md bg-[#111111] px-2 py-1">
+                  <div className="text-[#919191]">Positive</div>
+                  <div className="mt-0.5 text-[#E7E7E7]">{formatProbability(earningsStatus?.sentiment?.positive)}</div>
+                </div>
+                <div className="rounded-md bg-[#111111] px-2 py-1">
+                  <div className="text-[#919191]">Negative</div>
+                  <div className="mt-0.5 text-[#E7E7E7]">{formatProbability(earningsStatus?.sentiment?.negative)}</div>
+                </div>
+              </div>
             </div>
           </div>
           <p className="mt-3 text-xs leading-5 text-[#A7A7A7]">

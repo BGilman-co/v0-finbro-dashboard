@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { analyzeFinancialSentiment, type FinancialSentimentSummary } from "@/lib/financial-sentiment"
 import { loadSp500Universe, normalizeSymbol } from "@/lib/server-market-data"
 
 const finnhubBaseUrl = "https://finnhub.io/api/v1"
@@ -34,6 +35,20 @@ const transcriptsListSchema = z.object({
   transcripts: z.array(transcriptMetadataSchema).optional(),
 })
 
+const transcriptSpeechSchema = z.object({
+  name: z.string().optional(),
+  speech: z.string().optional(),
+})
+
+const transcriptDetailSchema = z.object({
+  id: z.string().optional(),
+  symbol: z.string().optional(),
+  title: z.string().optional(),
+  year: z.number().optional(),
+  quarter: z.number().optional(),
+  transcript: z.array(transcriptSpeechSchema).optional(),
+})
+
 export type FinnhubEarningsEvent = z.infer<typeof earningsEventSchema>
 export type FinnhubTranscriptMetadata = z.infer<typeof transcriptMetadataSchema>
 
@@ -41,6 +56,7 @@ export type FinnhubEarningsPayload = {
   symbol: string
   earningsEvents: FinnhubEarningsEvent[]
   transcripts: FinnhubTranscriptMetadata[]
+  sentiment: FinancialSentimentSummary
   shouldRefreshModel: boolean
   refreshReason: string
   earningsCalendarAvailable: boolean
@@ -146,6 +162,30 @@ async function fetchTranscriptsList(symbol: string) {
   return payload.transcripts ?? []
 }
 
+async function fetchTranscriptDetail(id: string) {
+  return fetchFinnhubJson("/stock/transcripts", { id }, transcriptDetailSchema)
+}
+
+function transcriptDetailToSentimentText(detail: z.infer<typeof transcriptDetailSchema>) {
+  return (detail.transcript ?? [])
+    .map((entry) => [entry.name, entry.speech].filter(Boolean).join(": "))
+    .join(" ")
+}
+
+async function analyzeRecentTranscriptSentiment(transcripts: FinnhubTranscriptMetadata[]) {
+  const details = await Promise.all(
+    transcripts
+      .slice(0, 2)
+      .map((transcript) => fetchTranscriptDetail(transcript.id).catch(() => null)),
+  )
+  const texts = details
+    .filter((detail): detail is z.infer<typeof transcriptDetailSchema> => Boolean(detail))
+    .map(transcriptDetailToSentimentText)
+    .filter(Boolean)
+
+  return analyzeFinancialSentiment(texts)
+}
+
 export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarningsPayload> {
   const normalizedSymbol = normalizeSymbol(symbol)
   const updatedAt = new Date().toISOString()
@@ -155,6 +195,7 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
       symbol: normalizedSymbol,
       earningsEvents: [],
       transcripts: [],
+      sentiment: await analyzeFinancialSentiment([]),
       shouldRefreshModel: false,
       refreshReason: "FINNHUB_API_KEY is not configured in .env.local.",
       earningsCalendarAvailable: false,
@@ -174,6 +215,9 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
     const transcripts = transcriptsResult.status === "fulfilled" ? transcriptsResult.value : []
     const earningsCalendarAvailable = earningsResult.status === "fulfilled"
     const transcriptsAvailable = transcriptsResult.status === "fulfilled"
+    const sentiment = transcriptsAvailable
+      ? await analyzeRecentTranscriptSentiment(transcripts)
+      : await analyzeFinancialSentiment([])
     const hasFreshEvent = earningsEvents.some(isEventInRefreshWindow)
     const hasFreshTranscript = latestTranscriptIsRecent(transcripts)
     const shouldRefreshModel = hasFreshEvent || hasFreshTranscript
@@ -194,6 +238,7 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
       symbol: normalizedSymbol,
       earningsEvents,
       transcripts: transcripts.slice(0, 6),
+      sentiment,
       shouldRefreshModel,
       refreshReason,
       earningsCalendarAvailable,
@@ -207,6 +252,7 @@ export async function loadFinnhubEarnings(symbol: string): Promise<FinnhubEarnin
       symbol: normalizedSymbol,
       earningsEvents: [],
       transcripts: [],
+      sentiment: await analyzeFinancialSentiment([]),
       shouldRefreshModel: false,
       refreshReason: "Finnhub did not return usable earnings data.",
       earningsCalendarAvailable: false,
