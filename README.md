@@ -25,6 +25,12 @@ Vercel should have real values for `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_S
 
 Supabase may return `email rate limit exceeded` when too many verification or magic-link emails are requested through the default sender. For production, configure a dedicated SMTP provider in Supabase Auth and adjust email rate limits to match expected signup volume.
 
+## Supabase Keepalive
+
+Free Supabase projects can pause after a week of low database activity. This repo includes a daily Vercel cron route at `/api/cron/supabase-keepalive` that performs one server-side write through the `record_service_health_check` RPC, updating the `service_health_checks` table with the latest run timestamp.
+
+Apply `supabase/migrations/20260824143000_create_service_health_checks.sql` before relying on the keepalive route. The route requires `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` on Vercel. If `CRON_SECRET` is configured, manual calls must include `Authorization: Bearer <CRON_SECRET>`.
+
 ## Vercel Deployment
 
 Vercel is the only deployment target for this app. Use the default Next.js framework preset with `pnpm install --frozen-lockfile` and `pnpm build`. The app uses dynamic route handlers under `app/api/` for market data, price history, S&P 500 universe data, SEC filings, and authentication, so it should be deployed as a normal Vercel Next.js app rather than a static export or GitHub Pages site.
